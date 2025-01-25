@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import type { Module, Game, Event, ModuleProperty, ModuleColor } from '../lib/types';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, Clock, User, CalendarDays, Printer } from 'lucide-react';
 import { format } from 'date-fns';
 import { toLocalTime, dateTimeLocalToUTC, utcToDateTimeLocal, formatDateTime } from '../lib/dates';
 import { MODULE_COLORS } from '../lib/colors';
@@ -19,6 +19,7 @@ export function ModuleDetailPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [canEdit, setCanEdit] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [authorName, setAuthorName] = useState<string>('');
   const [editForm, setEditForm] = useState<{
     name: string;
     start_time: string;
@@ -27,16 +28,168 @@ export function ModuleDetailPage() {
     color: ModuleColor;
     properties: Record<string, any>;
   } | null>(null);
+  const moduleRef = useRef<HTMLDivElement>(null);
+
+  const handlePrint = () => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow || !module || !game || !event) return;
+
+    // Get the module content
+    const moduleContent = moduleRef.current;
+    if (!moduleContent) return;
+
+    // Create print-friendly styles
+    const printStyles = `
+      <style>
+        @media print {
+          @page {
+            margin: 2cm;
+          }
+          
+          body { 
+            margin: 0;
+            padding: 20px;
+            font-family: 'Crimson Text', serif;
+            color: #2D3748;
+            background: #FFFBF2;
+          }
+
+          h1, h2 {
+            font-family: 'MedievalSharp', cursive;
+            text-align: center;
+            color: #2D3748;
+            margin-bottom: 1rem;
+          }
+
+          h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+          }
+
+          h2 {
+            font-size: 1.8rem;
+            margin-top: 2rem;
+          }
+
+          .author {
+            text-align: center;
+            font-style: italic;
+            color: #4A5568;
+            margin-bottom: 2rem;
+          }
+
+          .details-table {
+            width: 100%;
+            max-width: 600px;
+            margin: 2rem auto;
+            border-collapse: collapse;
+          }
+
+          .details-table td {
+            padding: 0.75rem;
+            text-align: center;
+            border: 1px solid #F7E2C3;
+          }
+
+          .details-table td:first-child {
+            font-weight: 600;
+            background: #FAECD3;
+            width: 40%;
+          }
+
+          .content-section {
+            margin: 2rem 0;
+            padding: 1.5rem;
+            background: #FDF6E3;
+            border: 1px solid #F7E2C3;
+            border-radius: 0.5rem;
+          }
+
+          .content-section p {
+            margin: 0;
+            line-height: 1.6;
+          }
+
+          .content-section p:first-letter {
+            font-size: 2rem;
+            font-family: 'MedievalSharp', cursive;
+            float: left;
+            margin-right: 0.5rem;
+            line-height: 1;
+          }
+
+          .page-break {
+            page-break-before: always;
+          }
+
+          .no-print {
+            display: none;
+          }
+        }
+      </style>
+      <link href="https://fonts.googleapis.com/css2?family=Crimson+Text:ital,wght@0,400;0,600;0,700;1,400;1,600;1,700&family=MedievalSharp&display=swap" rel="stylesheet">
+    `;
+
+    // Create the print document
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>${module.name} - Module Details</title>
+          ${printStyles}
+        </head>
+        <body>
+          <div>
+            <h1>${module.name}</h1>
+            <div class="author">By ${authorName}</div>
+
+            <table class="details-table">
+              <tr>
+                <td>Start Time</td>
+                <td>${format(toLocalTime(module.start_time), 'PPpp')}</td>
+              </tr>
+              <tr>
+                <td>Duration</td>
+                <td>${module.duration} hours</td>
+              </tr>
+            </table>
+
+            <h2>Summary</h2>
+            <div class="content-section">
+              <p>${module.summary || 'No summary provided.'}</p>
+            </div>
+
+            ${game.module_properties.map(property => `
+              <h2>${property.displayName}</h2>
+              <div class="content-section">
+                <p>${
+                  property.variableType === 'dateTime'
+                    ? formatDateTime(toLocalTime(module.properties[property.name]), 'PPpp')
+                    : module.properties[property.name] || 'Not specified'
+                }</p>
+              </div>
+            `).join('')}
+          </div>
+        </body>
+      </html>
+    `);
+
+    printWindow.document.close();
+
+    // Wait for fonts to load before printing
+    printWindow.onload = () => {
+      setTimeout(() => {
+        printWindow.print();
+        printWindow.onafterprint = () => printWindow.close();
+      }, 1000);
+    };
+  };
 
   useEffect(() => {
-    // Set current game ID for display name check
     if (gameId) {
       setCurrentGameId(gameId);
     }
-
-    return () => {
-      setCurrentGameId(null);
-    };
+    return () => setCurrentGameId(null);
   }, [gameId, setCurrentGameId]);
 
   useEffect(() => {
@@ -70,7 +223,7 @@ export function ModuleDetailPage() {
           (userRole === 'writer' && module.author_id === (await supabase.auth.getUser()).data.user?.id)
         );
 
-        // Initialize edit form with local time values
+        // Initialize edit form
         setEditForm({
           name: module.name,
           start_time: utcToDateTimeLocal(module.start_time),
@@ -81,12 +234,23 @@ export function ModuleDetailPage() {
             Object.entries(module.properties).map(([key, value]) => {
               const property = game.module_properties.find(p => p.name === key);
               if (property?.variableType === 'dateTime') {
-                return [key, utcToDateTimeLocal(value)];
+                return [key, utcToDateTimeLocal(value as string)];
               }
               return [key, value];
             })
           )
         });
+
+        // Get author display name
+        if (module.author_id) {
+          const { data: userData } = await supabase.rpc('get_user_metadata', {
+            user_ids: [module.author_id]
+          });
+          if (userData?.[0]) {
+            setAuthorName(userData[0].display_name);
+          }
+        }
+
       } catch (error) {
         console.error('Error loading module:', error);
         setError('Failed to load module');
@@ -104,7 +268,7 @@ export function ModuleDetailPage() {
     try {
       setError(null);
 
-      // Convert local times to UTC only when saving
+      // Convert local times to UTC for storage
       const updatedModule = {
         ...module,
         name: editForm.name,
@@ -116,7 +280,7 @@ export function ModuleDetailPage() {
           Object.entries(editForm.properties).map(([key, value]) => {
             const property = game?.module_properties.find(p => p.name === key);
             if (property?.variableType === 'dateTime') {
-              return [key, dateTimeLocalToUTC(value)];
+              return [key, dateTimeLocalToUTC(value as string)];
             }
             return [key, value];
           })
@@ -148,250 +312,249 @@ export function ModuleDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+      <div className="loading-spinner">
+        <div className="spinner" />
       </div>
     );
   }
 
   if (!module || !game || !event || !editForm) {
     return (
-      <div className="text-center py-12">
-        <p className="text-gray-500">Module not found</p>
-      </div>
+      <div className="empty-state">Module not found</div>
     );
   }
 
-  const renderPropertyValue = (property: ModuleProperty, value: any) => {
-    switch (property.variableType) {
-      case 'dateTime':
-        return format(toLocalTime(value), 'PPpp');
-      case 'number':
-        return value.toString();
-      default:
-        return value;
-    }
-  };
+  const moduleStart = toLocalTime(module.start_time);
+  const colorConfig = MODULE_COLORS.find(c => c.id === (module.color || 'blue')) || MODULE_COLORS[0];
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center text-sm">
-        <Link 
-          to="/games" 
-          className="text-gray-500 hover:text-gray-700"
-        >
-          Games
-        </Link>
-        <ChevronRight className="h-4 w-4 mx-2 text-gray-400" />
-        <Link 
-          to={`/games/${gameId}/events`}
-          className="text-gray-500 hover:text-gray-700"
-        >
-          {game?.name}
-        </Link>
-        <ChevronRight className="h-4 w-4 mx-2 text-gray-400" />
-        <Link 
-          to={`/games/${gameId}/events/${eventId}/modules`}
-          className="text-gray-500 hover:text-gray-700"
-        >
-          {event?.name}
-        </Link>
-        <ChevronRight className="h-4 w-4 mx-2 text-gray-400" />
-        <span className="text-gray-900 font-medium">
-          {module?.name}
-        </span>
+    <div className="page-container">
+      <div className="breadcrumb">
+        <Link to="/games" className="breadcrumb-item">Games</Link>
+        <ChevronRight className="breadcrumb-separator" />
+        <Link to={`/games/${gameId}/events`} className="breadcrumb-item">{game.name}</Link>
+        <ChevronRight className="breadcrumb-separator" />
+        <Link to={`/games/${gameId}/events/${eventId}/modules`} className="breadcrumb-item">{event.name}</Link>
+        <ChevronRight className="breadcrumb-separator" />
+        <span className="breadcrumb-current">{module.name}</span>
       </div>
 
       {error && (
-        <div className="rounded-md bg-red-50 p-4">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <div className="ml-3">
-              <h3 className="text-sm font-medium text-red-800">{error}</h3>
-            </div>
-          </div>
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+          <span className="block sm:inline">{error}</span>
         </div>
       )}
 
-      <div className="sm:flex sm:items-center sm:justify-between">
-        <div>
-          {isEditing ? (
-            <input
-              type="text"
-              value={editForm.name}
-              onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-              className="text-2xl font-semibold text-gray-900 bg-white border-b border-gray-300 focus:border-indigo-500 focus:ring-0 w-full"
-            />
-          ) : (
-            <h1 className="text-2xl font-semibold text-gray-900">{module.name}</h1>
-          )}
-          <p className="mt-2 text-sm text-gray-700">
-            {formatDateTime(toLocalTime(module.start_time), 'PPpp')} ({module.duration} hours)
-          </p>
-        </div>
-        {canEdit && !isEditing && (
-          <div className="space-x-4">
+      <div className="card" ref={moduleRef}>
+        <div className="card-header">
+          <div className="relative">
             <button
-              onClick={() => setIsEditing(true)}
-              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              onClick={handlePrint}
+              className="absolute right-0 top-0 btn btn-secondary btn-with-icon"
+              title="Print module details"
             >
-              Edit Module
+              <Printer className="h-4 w-4 mr-2" />
+              Print
             </button>
+            <div className="text-center space-y-4">
+              {isEditing ? (
+                <input
+                  type="text"
+                  value={editForm.name}
+                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                  className="text-4xl font-script text-ink text-center bg-transparent border-b border-parchment-300 focus:border-ink focus:ring-0 w-full"
+                />
+              ) : (
+                <h1 className="text-4xl font-script text-ink">{module.name}</h1>
+              )}
+              <div className="flex items-center justify-center text-ink-light space-x-2">
+                <User className="h-4 w-4" />
+                <span className="text-sm font-medieval italic">By {authorName}</span>
+              </div>
+            </div>
           </div>
-        )}
-      </div>
+        </div>
 
-      <div className="bg-white shadow rounded-lg overflow-hidden">
-        <div className="p-6 space-y-6">
-          {isEditing ? (
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Start Time
-                </label>
-                <input
-                  type="datetime-local"
-                  value={editForm.start_time}
-                  onChange={(e) => setEditForm({ ...editForm, start_time: e.target.value })}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                />
-              </div>
+        <div className="card-body">
+          {/* Module Details Table */}
+          <div className="max-w-2xl mx-auto mb-8">
+            <table className="w-full">
+              <tbody className="divide-y divide-parchment-300">
+                <tr>
+                  <td className="py-3 text-center font-medieval text-ink-light">
+                    <div className="flex items-center justify-center space-x-2">
+                      <CalendarDays className="h-4 w-4" />
+                      <span>Start Time</span>
+                    </div>
+                  </td>
+                  <td className="py-3 text-center font-medieval text-ink">
+                    {isEditing ? (
+                      <input
+                        type="datetime-local"
+                        value={editForm.start_time}
+                        onChange={(e) => setEditForm({ ...editForm, start_time: e.target.value })}
+                        className="form-input text-center"
+                      />
+                    ) : (
+                      format(moduleStart, 'PPpp')
+                    )}
+                  </td>
+                </tr>
+                <tr>
+                  <td className="py-3 text-center font-medieval text-ink-light">
+                    <div className="flex items-center justify-center space-x-2">
+                      <Clock className="h-4 w-4" />
+                      <span>Duration</span>
+                    </div>
+                  </td>
+                  <td className="py-3 text-center font-medieval text-ink">
+                    {isEditing ? (
+                      <input
+                        type="number"
+                        value={editForm.duration}
+                        onChange={(e) => setEditForm({ ...editForm, duration: parseFloat(e.target.value) })}
+                        min="0.5"
+                        step="0.5"
+                        className="form-input text-center"
+                      />
+                    ) : (
+                      `${module.duration} hours`
+                    )}
+                  </td>
+                </tr>
+                {isEditing && (
+                  <tr>
+                    <td className="py-3 text-center font-medieval text-ink-light">
+                      <span>Color</span>
+                    </td>
+                    <td className="py-3 text-center">
+                      <select
+                        value={editForm.color}
+                        onChange={(e) => setEditForm({ ...editForm, color: e.target.value as ModuleColor })}
+                        className="form-input text-center"
+                      >
+                        {MODULE_COLORS.map(color => (
+                          <option key={color.id} value={color.id}>
+                            {color.name}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Duration (hours)
-                </label>
-                <input
-                  type="number"
-                  value={editForm.duration}
-                  onChange={(e) => setEditForm({ ...editForm, duration: parseFloat(e.target.value) })}
-                  min="0.5"
-                  step="0.5"
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Summary
-                </label>
-                <textarea
-                  value={editForm.summary}
-                  onChange={(e) => setEditForm({ ...editForm, summary: e.target.value })}
-                  rows={3}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Color
-                </label>
+          {/* Summary Section */}
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-2xl font-script text-ink text-center mb-4">Summary</h2>
+              <div className="bg-parchment-50 rounded-lg p-6 shadow-inner border border-parchment-300">
                 {isEditing ? (
-                  <select
-                    value={editForm.color}
-                    onChange={(e) => setEditForm({ ...editForm, color: e.target.value as ModuleColor })}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                  >
-                    {MODULE_COLORS.map(color => (
-                      <option key={color.id} value={color.id}>
-                        {color.name}
-                      </option>
-                    ))}
-                  </select>
+                  <textarea
+                    value={editForm.summary}
+                    onChange={(e) => setEditForm({ ...editForm, summary: e.target.value })}
+                    rows={4}
+                    className="form-textarea w-full"
+                  />
                 ) : (
-                  <div className={`mt-1 inline-block px-3 py-1 rounded-full ${
-                    (MODULE_COLORS.find(c => c.id === (module.color || 'blue')) || MODULE_COLORS[0]).bgClass
-                  } ${
-                    (MODULE_COLORS.find(c => c.id === (module.color || 'blue')) || MODULE_COLORS[0]).textClass
-                  }`}>
-                    {(MODULE_COLORS.find(c => c.id === (module.color || 'blue')) || MODULE_COLORS[0]).name}
-                  </div>
+                  <p className="font-medieval text-ink first-letter:text-3xl first-letter:font-script first-letter:mr-1 first-letter:float-left first-letter:leading-none">
+                    {module.summary || 'No summary provided.'}
+                  </p>
                 )}
               </div>
             </div>
-          ) : (
-            <div>
-              <h3 className="text-lg font-medium text-gray-900">Summary</h3>
-              <p className="mt-2 text-gray-500">{module.summary}</p>
+
+            {/* Module Properties */}
+            {game.module_properties.map((property) => (
+              <div key={property.name}>
+                <h2 className="text-2xl font-script text-ink text-center mb-4">
+                  {property.displayName}
+                </h2>
+                <div className="bg-parchment-50 rounded-lg p-6 shadow-inner border border-parchment-300">
+                  {isEditing ? (
+                    property.variableType === 'dateTime' ? (
+                      <input
+                        type="datetime-local"
+                        value={editForm.properties[property.name] || ''}
+                        onChange={(e) => setEditForm({
+                          ...editForm,
+                          properties: {
+                            ...editForm.properties,
+                            [property.name]: e.target.value
+                          }
+                        })}
+                        className="form-input w-full"
+                      />
+                    ) : property.variableType === 'longString' ? (
+                      <textarea
+                        value={editForm.properties[property.name] || ''}
+                        onChange={(e) => setEditForm({
+                          ...editForm,
+                          properties: {
+                            ...editForm.properties,
+                            [property.name]: e.target.value
+                          }
+                        })}
+                        rows={4}
+                        className="form-textarea w-full"
+                      />
+                    ) : (
+                      <input
+                        type={property.variableType === 'number' ? 'number' : 'text'}
+                        value={editForm.properties[property.name] || ''}
+                        onChange={(e) => setEditForm({
+                          ...editForm,
+                          properties: {
+                            ...editForm.properties,
+                            [property.name]: e.target.value
+                          }
+                        })}
+                        className="form-input w-full"
+                      />
+                    )
+                  ) : (
+                    <p className="font-medieval text-ink first-letter:text-3xl first-letter:font-script first-letter:mr-1 first-letter:float-left first-letter:leading-none">
+                      {property.variableType === 'dateTime'
+                        ? formatDateTime(toLocalTime(module.properties[property.name]), 'PPpp')
+                        : module.properties[property.name] || 'Not specified'}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Action Buttons */}
+          {canEdit && (
+            <div className="mt-8 flex justify-center space-x-4">
+              {isEditing ? (
+                <>
+                  <button
+                    onClick={() => setIsEditing(false)}
+                    className="btn btn-secondary"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSaveModule}
+                    className="btn btn-primary"
+                  >
+                    Save Changes
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="btn btn-primary"
+                >
+                  Edit Module
+                </button>
+              )}
             </div>
           )}
-
-          <div>
-            <h3 className="text-lg font-medium text-gray-900">Properties</h3>
-            <div className="mt-4 space-y-4">
-              {game.module_properties.map((property) => (
-                <div key={property.name}>
-                  <label className="block text-sm font-medium text-gray-700">
-                    {property.displayName}
-                  </label>
-                  <div className="mt-1">
-                    {isEditing ? (
-                      property.variableType === 'dateTime' ? (
-                        <input
-                          type="datetime-local"
-                          className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                          value={editForm.properties[property.name] || ''}
-                          onChange={(e) => {
-                            setEditForm({
-                              ...editForm,
-                              properties: {
-                                ...editForm.properties,
-                                [property.name]: e.target.value
-                              }
-                            });
-                          }}
-                        />
-                      ) : (
-                        <input
-                          type={property.variableType === 'number' ? 'number' : 'text'}
-                          className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                          value={editForm.properties[property.name] || ''}
-                          onChange={(e) => {
-                            setEditForm({
-                              ...editForm,
-                              properties: {
-                                ...editForm.properties,
-                                [property.name]: e.target.value
-                              }
-                            });
-                          }}
-                        />
-                      )
-                    ) : (
-                      <div className="text-gray-900">
-                        {property.variableType === 'dateTime' 
-                          ? formatDateTime(toLocalTime(module.properties[property.name]), 'PPpp')
-                          : renderPropertyValue(property, module.properties[property.name])}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
         </div>
-
-        {isEditing && (
-          <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end space-x-4">
-            <button
-              onClick={() => setIsEditing(false)}
-              className="px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSaveModule}
-              className="px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-            >
-              Save Changes
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );
