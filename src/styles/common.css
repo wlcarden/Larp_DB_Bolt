@@ -1,0 +1,252 @@
+/* Common layout styles */
+.page-container {
+  @apply space-y-6;
+}
+
+/* Breadcrumb styles */
+.breadcrumb {
+  @apply flex items-center text-sm;
+}
+
+.breadcrumb-item {
+  @apply text-gray-500 hover:text-gray-700;
+}
+
+.breadcrumb-separator {
+  @apply h-4 w-4 mx-2 text-gray-400;
+}
+
+.breadcrumb-current {
+  @apply text-gray-900 font-medium;
+}
+
+/* Card styles */
+.card {
+  @apply bg-white shadow rounded-lg overflow-hidden;
+}
+
+.card-header {
+  @apply px-4 py-5 sm:px-6 border-b border-gray-200;
+}
+
+.card-header-with-button {
+  @apply flex justify-between items-center;
+}
+
+.card-title {
+  @apply text-lg font-medium text-gray-900;
+}
+
+.card-description {
+  @apply mt-1 text-sm text-gray-500;
+}
+
+.card-body {
+  @apply p-6;
+}
+
+/* List styles */
+.list {
+  @apply divide-y divide-gray-200;
+}
+
+.list-item {
+  @apply px-4 py-4 sm:px-6 hover:bg-gray-50;
+}
+
+.list-item-content {
+  @apply flex items-center justify-between;
+}
+
+.list-item-main {
+  @apply flex-1 min-w-0;
+}
+
+.list-item-title {
+  @apply flex items-center;
+}
+
+.list-item-heading {
+  @apply text-lg font-medium text-gray-900 truncate;
+}
+
+.list-item-badge {
+  @apply ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+}
+
+.list-item-badge-success {
+  @apply bg-green-100 text-green-800;
+}
+
+.list-item-badge-neutral {
+  @apply bg-gray-100 text-gray-800;
+}
+
+.list-item-description {
+  @apply mt-1 text-sm text-gray-500;
+}
+
+.list-item-meta {
+  @apply mt-2 flex items-center space-x-6;
+}
+
+.list-item-meta-text {
+  @apply flex items-center text-sm text-gray-500;
+}
+
+.list-item-actions {
+  @apply flex items-center space-x-4;
+}
+
+/* Button styles */
+.btn {
+  @apply px-4 py-2 rounded-md text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-2;
+}
+
+.btn-primary {
+  @apply border border-transparent text-white bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-500;
+}
+
+.btn-secondary {
+  @apply border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 focus:ring-indigo-500;
+}
+
+.btn-icon {
+  @apply text-gray-400 hover:text-gray-500;
+}
+
+.btn-icon-danger {
+  @apply text-red-400 hover:text-red-500;
+}
+
+.btn-with-icon {
+  @apply inline-flex items-center;
+}
+
+/* Form styles */
+.form-group {
+  @apply space-y-4;
+}
+
+.form-label {
+  @apply block text-sm font-medium text-gray-700;
+}
+
+.form-input {
+  @apply mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm;
+}
+
+.form-textarea {
+  @apply mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm;
+}
+
+/* Modal styles */
+.modal-overlay {
+  @apply fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center p-4 z-50;
+}
+
+.modal-content {
+  @apply bg-white rounded-lg shadow-xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto;
+}
+
+.modal-title {
+  @apply text-xl font-semibold mb-4;
+}
+
+/* Loading spinner */
+.loading-spinner {
+  @apply flex justify-center items-center h-64;
+}
+
+.spinner {
+  @apply animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600;
+}
+
+/* Empty state */
+.empty-state {
+  @apply px-4 py-8 text-center text-gray-500;
+}
+
+/* Schedule styles */
+.schedule-grid {
+  display: grid;
+  grid-template-columns: 5rem repeat(var(--day-count, 3), minmax(150px, 1fr));
+  min-width: 800px;
+  position: relative;
+  background: white;
+  border-right: 1px solid #E5E7EB;
+  border-bottom: 1px solid #E5E7EB;
+}
+
+.schedule-header-cell {
+  padding: 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #6B7280;
+  text-align: center;
+  background: #F9FAFB;
+  border-bottom: 1px solid #E5E7EB;
+  border-left: 1px solid #E5E7EB;
+}
+
+.schedule-time-column {
+  position: sticky;
+  left: 0;
+  z-index: 10;
+  background: white;
+  padding: 0.5rem;
+  text-align: right;
+  font-size: 0.875rem;
+  color: #6B7280;
+  border-right: 1px solid #E5E7EB;
+  border-left: 1px solid #E5E7EB;
+  height: 3rem;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.schedule-cell {
+  position: relative;
+  border-left: 1px solid #E5E7EB;
+  height: 3rem;
+  background: white;
+}
+
+.schedule-cell-outside {
+  background: #F9FAFB;
+  opacity: 0.75;
+}
+
+.schedule-event {
+  @apply rounded-md px-2 py-1 text-xs font-medium whitespace-nowrap overflow-hidden text-ellipsis cursor-pointer transition-colors duration-150 z-10;
+}
+
+/* Table styles */
+.table-container {
+  @apply overflow-x-auto;
+}
+
+.table {
+  @apply min-w-full divide-y divide-gray-200;
+}
+
+.table-header {
+  @apply bg-gray-50;
+}
+
+.table-header-cell {
+  @apply px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider;
+}
+
+.table-body {
+  @apply bg-white divide-y divide-gray-200;
+}
+
+.table-row {
+  @apply hover:bg-gray-50;
+}
+
+.table-cell {
+  @apply px-6 py-4 whitespace-nowrap text-sm;
+}
