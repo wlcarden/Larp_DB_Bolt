@@ -23,14 +23,10 @@ export function ModulesPage() {
   const [showSchedule, setShowSchedule] = useState(false);
 
   useEffect(() => {
-    // Set current game ID for display name check
     if (gameId) {
       setCurrentGameId(gameId);
     }
-
-    return () => {
-      setCurrentGameId(null);
-    };
+    return () => setCurrentGameId(null);
   }, [gameId, setCurrentGameId]);
 
   useEffect(() => {
@@ -116,25 +112,25 @@ export function ModulesPage() {
       <div className="card">
         <button
           onClick={() => setShowSchedule(!showSchedule)}
-          className="w-full card-header hover:bg-gray-50 transition-colors duration-200"
+          className="w-full card-header hover:bg-parchment-200/50 transition-colors duration-200"
         >
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="card-title">Schedule</h3>
-              <p className="card-description">
-                {format(eventStart, 'PPP')} - {format(eventEnd, 'PPP')}
-              </p>
+          <div className="flex flex-col items-center">
+            <h3 className="card-title mb-2">Schedule</h3>
+            <p className="card-description text-center">
+              {format(eventStart, 'PPP')} - {format(eventEnd, 'PPP')}
+            </p>
+            <div className="mt-2">
+              {showSchedule ? (
+                <ChevronUp className="h-5 w-5 text-ink-light" />
+              ) : (
+                <ChevronDown className="h-5 w-5 text-ink-light" />
+              )}
             </div>
-            {showSchedule ? (
-              <ChevronUp className="h-5 w-5 text-gray-400" />
-            ) : (
-              <ChevronDown className="h-5 w-5 text-gray-400" />
-            )}
           </div>
         </button>
         {showSchedule && (
           <div className="card-body">
-            <div className="table-container">
+            <div className="relative pt-12">
               <ScheduleWidget
                 startDate={eventStart}
                 endDate={eventEnd}
@@ -182,21 +178,21 @@ export function ModulesPage() {
                   <tr
                     key={module.id}
                     onClick={() => canCreateModule && navigate(`/games/${gameId}/events/${eventId}/modules/${module.id}`)}
-                    className={`table-row ${canCreateModule ? 'cursor-pointer hover:bg-gray-50' : ''}`}
+                    className={`table-row ${canCreateModule ? 'cursor-pointer hover:bg-parchment-100' : ''}`}
                   >
-                    <td className="table-cell font-medium text-gray-900 border-r border-gray-100">
+                    <td className="table-cell font-medium text-ink border-r border-parchment-200">
                       {module.name}
                     </td>
-                    <td className="table-cell text-gray-500 border-r border-gray-100">
+                    <td className="table-cell text-ink-light border-r border-parchment-200">
                       {authorNames[module.author_id] || 'Unknown'}
                     </td>
-                    <td className="table-cell text-gray-500 border-r border-gray-100">
+                    <td className="table-cell text-ink-light border-r border-parchment-200">
                       {format(moduleStart, 'PPp')}
                     </td>
-                    <td className="table-cell text-gray-500 text-center border-r border-gray-100">
+                    <td className="table-cell text-ink-light text-center border-r border-parchment-200">
                       {module.duration}h
                     </td>
-                    <td className="table-cell text-gray-500">
+                    <td className="table-cell text-ink-light">
                       <div className="line-clamp-1">{module.summary}</div>
                     </td>
                   </tr>

@@ -1,5 +1,240 @@
-@import './styles/common.css';
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  body {
+    @apply font-medieval text-ink bg-parchment-50;
+  }
+}
+
+/* Common layout styles */
+.page-container {
+  @apply space-y-6 p-6;
+}
+
+/* Breadcrumb styles */
+.breadcrumb {
+  @apply flex items-center text-sm font-medieval;
+}
+
+.breadcrumb-item {
+  @apply text-ink-light hover:text-ink transition-colors duration-200;
+}
+
+.breadcrumb-separator {
+  @apply h-4 w-4 mx-2 text-ink-light;
+}
+
+.breadcrumb-current {
+  @apply text-ink font-semibold;
+}
+
+/* Card styles */
+.card {
+  @apply bg-parchment-100/90 backdrop-blur-sm shadow-parchment rounded-lg overflow-hidden border border-parchment-300;
+}
+
+.card-header {
+  @apply px-6 py-5 border-b border-parchment-300 bg-parchment-200/50;
+}
+
+.card-header-with-button {
+  @apply flex justify-between items-center;
+}
+
+.card-title {
+  @apply text-2xl font-script text-ink;
+}
+
+.card-description {
+  @apply mt-1 text-sm font-medieval text-ink-light;
+}
+
+.card-body {
+  @apply p-6;
+}
+
+/* List styles */
+.list {
+  @apply divide-y divide-parchment-300;
+}
+
+.list-item {
+  @apply px-6 py-4 hover:bg-parchment-200/50 transition-colors duration-200;
+}
+
+.list-item-content {
+  @apply flex items-center justify-between;
+}
+
+.list-item-main {
+  @apply flex-1 min-w-0;
+}
+
+.list-item-title {
+  @apply flex items-center;
+}
+
+.list-item-heading {
+  @apply text-xl font-script text-ink truncate;
+}
+
+.list-item-badge {
+  @apply ml-2 inline-flex items-center px-3 py-1 rounded-full text-xs font-medieval;
+}
+
+.list-item-badge-success {
+  @apply bg-green-100 text-green-800;
+}
+
+.list-item-badge-neutral {
+  @apply bg-parchment-300 text-ink;
+}
+
+.list-item-description {
+  @apply mt-1 text-sm font-medieval text-ink-light;
+}
+
+.list-item-meta {
+  @apply mt-2 flex items-center space-x-6;
+}
+
+.list-item-meta-text {
+  @apply flex items-center text-sm font-medieval text-ink-light;
+}
+
+.list-item-actions {
+  @apply flex items-center space-x-4;
+}
+
+/* Button styles */
+.btn {
+  @apply px-4 py-2 rounded-md text-sm font-medieval focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors duration-200;
+}
+
+.btn-primary {
+  @apply border border-ink bg-ink text-parchment-100 hover:bg-ink-dark focus:ring-ink-light;
+}
+
+.btn-secondary {
+  @apply border border-parchment-400 text-ink bg-parchment-100 hover:bg-parchment-200 focus:ring-parchment-400;
+}
+
+.btn-icon {
+  @apply text-ink-light hover:text-ink transition-colors duration-200;
+}
+
+.btn-icon-danger {
+  @apply text-red-600 hover:text-red-700;
+}
+
+.btn-with-icon {
+  @apply inline-flex items-center;
+}
+
+/* Form styles */
+.form-group {
+  @apply space-y-4 font-medieval;
+}
+
+.form-label {
+  @apply block text-sm font-semibold text-ink;
+}
+
+.form-input {
+  @apply mt-1 block w-full rounded-md border-parchment-300 bg-parchment-50 shadow-sm focus:border-ink focus:ring-ink text-ink;
+}
+
+.form-textarea {
+  @apply mt-1 block w-full rounded-md border-parchment-300 bg-parchment-50 shadow-sm focus:border-ink focus:ring-ink text-ink;
+}
+
+/* Modal styles */
+.modal-overlay {
+  @apply fixed inset-0 bg-ink/75 backdrop-blur-sm flex items-center justify-center p-4 z-50;
+}
+
+.modal-content {
+  @apply bg-parchment-100 rounded-lg shadow-parchment max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto border border-parchment-300;
+}
+
+.modal-title {
+  @apply text-2xl font-script text-ink mb-4;
+}
+
+/* Loading spinner */
+.loading-spinner {
+  @apply flex justify-center items-center h-64;
+}
+
+.spinner {
+  @apply animate-spin rounded-full h-8 w-8 border-2 border-parchment-300 border-t-ink;
+}
+
+/* Empty state */
+.empty-state {
+  @apply px-6 py-8 text-center font-medieval text-ink-light;
+}
+
+/* Schedule styles */
+.schedule-grid {
+  display: grid;
+  grid-template-columns: 5rem repeat(var(--day-count, 3), minmax(150px, 1fr));
+  min-width: 800px;
+  position: relative;
+  background: theme('colors.parchment.100');
+  border-right: 1px solid theme('colors.parchment.300');
+  border-bottom: 1px solid theme('colors.parchment.300');
+}
+
+.schedule-header-cell {
+  @apply py-3 px-4 text-sm font-medieval font-semibold text-ink-light bg-parchment-200/50 border-b border-l border-parchment-300 text-center;
+}
+
+.schedule-time-column {
+  @apply sticky left-0 z-10 bg-parchment-100 py-2 px-4 text-right text-sm font-medieval text-ink-light border-r border-l border-parchment-300 h-12 flex items-center justify-end;
+  border-bottom: 1px solid theme('colors.parchment.300');
+}
+
+.schedule-cell {
+  @apply relative border-l border-parchment-300 h-12 bg-parchment-50;
+  border-bottom: 1px solid theme('colors.parchment.300');
+}
+
+.schedule-cell-outside {
+  @apply bg-parchment-200/50 opacity-75;
+}
+
+.schedule-event {
+  @apply rounded-md px-3 py-1.5 text-xs font-medieval font-medium whitespace-nowrap overflow-hidden text-ellipsis cursor-pointer transition-colors duration-150 z-10 shadow-parchment;
+}
+
+/* Table styles */
+.table-container {
+  @apply overflow-x-auto;
+}
+
+.table {
+  @apply min-w-full divide-y divide-parchment-300;
+}
+
+.table-header {
+  @apply bg-parchment-200/50;
+}
+
+.table-header-cell {
+  @apply px-6 py-3 text-left text-xs font-medieval font-semibold text-ink-light uppercase tracking-wider;
+}
+
+.table-body {
+  @apply bg-parchment-50 divide-y divide-parchment-300;
+}
+
+.table-row {
+  @apply hover:bg-parchment-100 transition-colors duration-200;
+}
+
+.table-cell {
+  @apply px-6 py-4 whitespace-nowrap text-sm font-medieval text-ink;
+}

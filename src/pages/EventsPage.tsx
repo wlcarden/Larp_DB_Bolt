@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import type { Event, Game } from '../lib/types';
-import { Calendar, Clock, Users, Plus, Edit2, Trash2, ChevronRight } from 'lucide-react';
+import { Clock, Plus, ChevronRight, Users, Edit2, Trash2, Calendar } from 'lucide-react';
 import { format, parseISO, isAfter, addMonths, startOfMonth, isSameDay, startOfDay, endOfDay, isWithinInterval, isBefore } from 'date-fns';
-import { EventCalendar } from '../components/EventCalendar';
+import { Calendar as CalendarWidget } from '../components/Calendar';
+import { toLocalTime } from '../lib/dates';
+import { getUserDisplayNames } from '../lib/users';
 import { useAuth } from '../contexts/AuthContext';
 
 export function EventsPage() {
@@ -191,24 +193,24 @@ export function EventsPage() {
     }[status];
 
     return (
-      <div key={event.id} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow duration-200">
+      <div key={event.id} className="bg-parchment-100/90 backdrop-blur-sm rounded-lg shadow-parchment border border-parchment-300 overflow-hidden hover:shadow-lg transition-shadow duration-200">
         <div className="p-6">
           <div className="flex justify-between items-start">
             <div className="flex-1">
               <div className="flex items-center space-x-3">
-                <h3 className="text-lg font-semibold text-gray-900">{event.name}</h3>
-                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${badgeClass}`}>
+                <h3 className="text-xl font-script text-ink">{event.name}</h3>
+                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medieval font-medium capitalize ${badgeClass}`}>
                   {status}
                 </span>
               </div>
-              <p className="mt-2 text-sm text-gray-600">{event.description}</p>
-              <div className="mt-4 flex items-center space-x-6 text-sm text-gray-500">
+              <p className="mt-2 text-sm font-medieval text-ink-light">{event.description}</p>
+              <div className="mt-4 flex items-center space-x-6 text-sm font-medieval text-ink-light">
                 <div className="flex items-center">
-                  <Clock className="h-4 w-4 mr-1.5 text-gray-400" />
+                  <Clock className="h-4 w-4 mr-1.5 text-ink-light" />
                   <span>{format(start, 'MMM d, yyyy h:mm a')} - {format(end, 'h:mm a')}</span>
                 </div>
                 <div className="flex items-center">
-                  <Users className="h-4 w-4 mr-1.5 text-gray-400" />
+                  <Users className="h-4 w-4 mr-1.5 text-ink-light" />
                   <span>0 modules</span>
                 </div>
               </div>
@@ -221,14 +223,14 @@ export function EventsPage() {
                       setEditingEvent(event);
                       setShowModal(true);
                     }}
-                    className="text-gray-400 hover:text-gray-500"
+                    className="btn-icon"
                     title="Edit event"
                   >
                     <Edit2 className="h-5 w-5" />
                   </button>
                   <button
                     onClick={() => handleDeleteEvent(event)}
-                    className="text-gray-400 hover:text-red-500"
+                    className="btn-icon-danger"
                     title="Delete event"
                   >
                     <Trash2 className="h-5 w-5" />
@@ -237,7 +239,7 @@ export function EventsPage() {
               )}
               <button
                 onClick={() => navigate(`/games/${gameId}/events/${event.id}/modules`)}
-                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                className="btn btn-primary"
               >
                 View Modules
               </button>
@@ -256,16 +258,16 @@ export function EventsPage() {
         <span className="breadcrumb-current">{game.name}</span>
       </div>
 
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-        <div className="px-6 py-5 border-b border-gray-200">
+      <div className="card">
+        <div className="px-6 py-5 border-b border-parchment-300 bg-parchment-200/50">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-5">
-              <div className="h-12 w-12 bg-indigo-100 rounded-lg flex items-center justify-center">
-                <Calendar className="h-6 w-6 text-indigo-600" />
+              <div className="h-12 w-12 bg-parchment-300 rounded-lg flex items-center justify-center">
+                <Calendar className="h-6 w-6 text-ink" />
               </div>
               <div>
-                <h1 className="text-xl font-semibold text-gray-900">{game.name}</h1>
-                <p className="mt-1 text-sm text-gray-500">{game.description}</p>
+                <h1 className="text-2xl font-script text-ink">{game.name}</h1>
+                <p className="mt-1 text-sm font-medieval text-ink-light">{game.description}</p>
               </div>
             </div>
             {isAdmin && (
@@ -274,7 +276,7 @@ export function EventsPage() {
                   setEditingEvent(null);
                   setShowModal(true);
                 }}
-                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                className="btn btn-primary"
               >
                 <Plus className="h-4 w-4 mr-2" />
                 Create Event
@@ -285,12 +287,12 @@ export function EventsPage() {
 
         <div className="p-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <EventCalendar
+            <CalendarWidget
               events={events}
               month={currentMonth}
               onDayClick={handleDayClick}
             />
-            <EventCalendar
+            <CalendarWidget
               events={events}
               month={nextMonth}
               onDayClick={handleDayClick}
@@ -301,7 +303,7 @@ export function EventsPage() {
 
       {ongoingEvents.length > 0 && (
         <div className="space-y-4">
-          <h2 className="text-lg font-medium text-gray-900">Ongoing Events</h2>
+          <h2 className="text-xl font-script text-ink">Ongoing Events</h2>
           <div className="space-y-4">
             {ongoingEvents.map(event => renderEventCard(event, 'ongoing'))}
           </div>
@@ -309,23 +311,27 @@ export function EventsPage() {
       )}
 
       <div className="space-y-4">
-        <h2 className="text-lg font-medium text-gray-900">Upcoming Events</h2>
+        <h2 className="text-xl font-script text-ink">Upcoming Events</h2>
         <div className="space-y-4">
           {upcomingEvents.length > 0 ? (
             upcomingEvents.map(event => renderEventCard(event, 'upcoming'))
           ) : (
-            <p className="text-sm text-gray-500 bg-gray-50 rounded-lg p-4">No upcoming events scheduled</p>
+            <p className="text-sm font-medieval text-ink-light bg-parchment-100/90 rounded-lg p-4 border border-parchment-300">
+              No upcoming events scheduled
+            </p>
           )}
         </div>
       </div>
 
       <div className="space-y-4">
-        <h2 className="text-lg font-medium text-gray-900">Past Events</h2>
+        <h2 className="text-xl font-script text-ink">Past Events</h2>
         <div className="space-y-4">
           {pastEvents.length > 0 ? (
             pastEvents.map(event => renderEventCard(event, 'past'))
           ) : (
-            <p className="text-sm text-gray-500 bg-gray-50 rounded-lg p-4">No past events</p>
+            <p className="text-sm font-medieval text-ink-light bg-parchment-100/90 rounded-lg p-4 border border-parchment-300">
+              No past events
+            </p>
           )}
         </div>
       </div>

@@ -3,13 +3,14 @@ import { format, addHours, eachDayOfInterval, isWithinInterval, isBefore, isAfte
 import type { Module, ModuleColor } from '../lib/types';
 import { MODULE_COLORS } from '../lib/colors';
 import { toLocalTime } from '../lib/dates';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../lib/supabase';
+import { Printer } from 'lucide-react';
 
 type ScheduleWidgetProps = {
   startDate: Date;
   endDate: Date;
-  modules: Module[];
+  modules?: Module[];
   onModuleClick?: (moduleId: string) => void;
   bufferHours?: number;
 };
@@ -30,30 +31,34 @@ interface ModuleBlock {
 export function ScheduleWidget({ 
   startDate, 
   endDate, 
-  modules, 
+  modules = [], 
   onModuleClick,
   bufferHours = 2 
 }: ScheduleWidgetProps) {
   const [authorNames, setAuthorNames] = useState<Record<string, string>>({});
+  const scheduleRef = useRef<HTMLDivElement>(null);
   const days = eachDayOfInterval({ start: startDate, end: endDate });
   
   useEffect(() => {
-    // Fetch author display names from auth.users
     const authorIds = [...new Set(modules.map(m => m.author_id))].filter(Boolean);
     if (authorIds.length === 0) return;
 
     async function fetchAuthors() {
-      const { data: users, error } = await supabase.rpc('get_user_metadata', {
-        user_ids: authorIds
-      });
+      try {
+        const { data: users, error } = await supabase.rpc('get_user_metadata', {
+          user_ids: authorIds
+        });
 
-      if (users) {
-        setAuthorNames(
-          Object.fromEntries(
-            users.map((user: { id: string, display_name: string }) => [user.id, user.display_name || 'Unknown'])
-          )
-        );
-      } else if (error) {
+        if (error) throw error;
+
+        if (users) {
+          setAuthorNames(
+            Object.fromEntries(
+              users.map((user: { id: string, display_name: string }) => [user.id, user.display_name || 'Unknown'])
+            )
+          );
+        }
+      } catch (error) {
         console.error('Error fetching user data:', error);
       }
     }
@@ -61,38 +66,153 @@ export function ScheduleWidget({
     fetchAuthors();
   }, [modules]);
 
+  const handlePrint = () => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    // Get the schedule element's content
+    const scheduleContent = scheduleRef.current;
+    if (!scheduleContent) return;
+
+    // Create print-friendly styles
+    const printStyles = `
+      <style>
+        @media print {
+          @page {
+            size: landscape;
+            margin: 1cm;
+          }
+          
+          body { 
+            margin: 0;
+            padding: 20px;
+            font-family: 'Crimson Text', serif;
+            color: #2D3748;
+          }
+
+          h1 {
+            font-family: 'MedievalSharp', cursive;
+            text-align: center;
+            margin-bottom: 20px;
+            color: #2D3748;
+          }
+
+          .schedule-grid {
+            display: grid;
+            grid-template-columns: 5rem repeat(${days.length}, minmax(150px, 1fr));
+            min-width: 800px;
+            background: #FDF6E3;
+            border: 1px solid #F7E2C3;
+            page-break-inside: avoid;
+          }
+
+          .schedule-header-cell {
+            padding: 12px;
+            font-weight: bold;
+            text-align: center;
+            border: 1px solid #F7E2C3;
+            background: #FAECD3;
+          }
+
+          .schedule-time-column {
+            padding: 8px;
+            text-align: right;
+            border: 1px solid #F7E2C3;
+            height: 48px;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            background: #FDF6E3;
+          }
+
+          .schedule-cell {
+            position: relative;
+            border: 1px solid #F7E2C3;
+            height: 48px;
+            background: #FFFBF2;
+          }
+
+          .schedule-cell-outside {
+            background: #FAECD3;
+            opacity: 0.75;
+          }
+
+          .schedule-event {
+            position: absolute;
+            border-radius: 4px;
+            padding: 4px 8px;
+            font-size: 12px;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+          }
+
+          /* Color classes for print */
+          .print-color-blue { background: #EBF8FF; color: #2C5282; }
+          .print-color-green { background: #F0FFF4; color: #276749; }
+          .print-color-purple { background: #FAF5FF; color: #553C9A; }
+          .print-color-orange { background: #FFFAF0; color: #9C4221; }
+          .print-color-pink { background: #FFF5F7; color: #97266D; }
+          .print-color-cyan { background: #E6FFFA; color: #234E52; }
+        }
+      </style>
+      <link href="https://fonts.googleapis.com/css2?family=Crimson+Text:ital,wght@0,400;0,600;0,700;1,400;1,600;1,700&family=MedievalSharp&display=swap" rel="stylesheet">
+    `;
+
+    // Create the print document
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Schedule - ${format(startDate, 'PPP')} to ${format(endDate, 'PPP')}</title>
+          ${printStyles}
+        </head>
+        <body>
+          <h1>Schedule: ${format(startDate, 'PPP')} to ${format(endDate, 'PPP')}</h1>
+          ${scheduleContent.outerHTML.replace(/bg-\w+-\d+/g, '').replace(
+            /(blue|green|purple|orange|pink|cyan)-\d+/g, 
+            (match) => `print-color-${match.split('-')[0]}`
+          )}
+        </body>
+      </html>
+    `);
+
+    printWindow.document.close();
+
+    // Wait for fonts to load before printing
+    printWindow.onload = () => {
+      setTimeout(() => {
+        printWindow.print();
+        printWindow.onafterprint = () => printWindow.close();
+      }, 1000);
+    };
+  };
+
   // Add buffer hours before and after
   const displayStart = new Date(startDate);
   displayStart.setHours(displayStart.getHours() - bufferHours);
   const displayEnd = new Date(endDate);
   displayEnd.setHours(displayEnd.getHours() + bufferHours);
 
-  // Calculate module blocks for proper grid positioning
   const getModuleBlocks = (day: Date): ModuleBlock[] => {
     const dayModules = modules
       .map(module => {
-        // Convert UTC times to local
         const moduleStart = toLocalTime(module.start_time);
         const moduleEnd = addHours(moduleStart, module.duration);
-        
-        // Get the start and end of the current day
         const dayStart = startOfDay(day);
         const dayEnd = endOfDay(day);
 
-        // Check if module belongs in this day
         const startsInDay = isWithinInterval(moduleStart, { start: dayStart, end: dayEnd });
         const spansDay = isBefore(moduleStart, dayStart) && isAfter(moduleEnd, dayEnd);
         const endsInDay = !spansDay && isWithinInterval(moduleEnd, { start: dayStart, end: dayEnd });
 
-        // Calculate the effective start and end times for this day's block
         const blockStart = isBefore(moduleStart, dayStart) ? dayStart : moduleStart;
         const blockEnd = isAfter(moduleEnd, dayEnd) ? dayEnd : moduleEnd;
 
-        // Only create a block if there's at least one minute of duration
         const durationInMinutes = differenceInMinutes(blockEnd, blockStart);
         
         if ((startsInDay || spansDay || endsInDay) && durationInMinutes > 0) {
-          // Calculate grid positioning
           const gridRowStart = blockStart.getHours() * 4 + Math.floor(blockStart.getMinutes() / 15) + 1;
           const durationInQuarters = durationInMinutes / 15;
 
@@ -114,19 +234,16 @@ export function ScheduleWidget({
       })
       .filter((block): block is ModuleBlock => block !== null);
 
-    // Sort blocks by start time and duration
     dayModules.sort((a, b) => {
       const startDiff = a.start.getTime() - b.start.getTime();
       if (startDiff === 0) {
-        return b.gridRowSpan - a.gridRowSpan; // Longer events first
+        return b.gridRowSpan - a.gridRowSpan;
       }
       return startDiff;
     });
 
-    // Group overlapping blocks
     const groups: ModuleBlock[][] = [];
     dayModules.forEach(block => {
-      // Find a group where this block overlaps with any existing block
       const overlappingGroup = groups.find(group =>
         group.some(existingBlock =>
           areIntervalsOverlapping(
@@ -143,7 +260,6 @@ export function ScheduleWidget({
       }
     });
 
-    // Assign columns within each group
     groups.forEach(group => {
       const columnCount = group.length;
       group.forEach((block, index) => {
@@ -158,71 +274,79 @@ export function ScheduleWidget({
   const isOutsideEventHours = (day: Date, hour: number): boolean => {
     const cellDate = new Date(day);
     cellDate.setHours(hour, 0, 0, 0);
-    
-    // Check if the cell's date and time is before the event start or after the event end
     return isBefore(cellDate, startDate) || isAfter(cellDate, endDate);
   };
 
   return (
-    <div className="schedule-grid" style={{ '--day-count': days.length } as React.CSSProperties}>
-      <div className="schedule-header-cell" />
-      {days.map(day => (
-        <div key={day.toISOString()} className="schedule-header-cell">
-          {format(day, 'MMM d')}
-        </div>
-      ))}
-
-      {Array.from({ length: 24 }, (_, hour) => (
-        <React.Fragment key={hour}>
-          <div className="schedule-time-column">
-            {format(new Date().setHours(hour, 0, 0, 0), 'HH:mm')}
+    <div className="relative">
+      <button
+        onClick={handlePrint}
+        className="absolute -top-12 right-0 btn btn-secondary btn-with-icon"
+        title="Print schedule"
+      >
+        <Printer className="h-4 w-4 mr-2" />
+        Print
+      </button>
+      <div ref={scheduleRef} className="schedule-grid" style={{ '--day-count': days.length } as React.CSSProperties}>
+        <div className="schedule-header-cell" />
+        {days.map(day => (
+          <div key={day.toISOString()} className="schedule-header-cell">
+            {format(day, 'MMM d')}
           </div>
+        ))}
 
-          {days.map(day => {
-            const blocks = getModuleBlocks(day);
-            const isOutside = isOutsideEventHours(day, hour);
+        {Array.from({ length: 24 }, (_, hour) => (
+          <React.Fragment key={hour}>
+            <div className="schedule-time-column">
+              {format(new Date().setHours(hour, 0, 0, 0), 'HH:mm')}
+            </div>
 
-            return (
-              <div
-                key={`${day.toISOString()}-${hour}`}
-                className={`schedule-cell ${isOutside ? 'schedule-cell-outside' : ''}`}
-                style={{
-                  display: 'grid',
-                  gridTemplateRows: 'repeat(4, 1fr)', // 15-minute intervals
-                  position: 'relative'
-                }}
-              >
-                {blocks
-                  .filter(block => block.gridRowStart >= hour * 4 + 1 && 
-                                 block.gridRowStart < (hour + 1) * 4 + 1)
-                  .map(block => {
-                    const colorConfig = MODULE_COLORS.find(c => c.id === block.color) || MODULE_COLORS[0];
-                    const columnWidth = 100 / block.columnCount;
-                    return (
-                      <div
-                        key={block.id}
-                        className={`schedule-event ${colorConfig.bgClass} ${colorConfig.textClass} ${colorConfig.hoverClass} flex flex-col items-center justify-center`}
-                        onClick={() => onModuleClick?.(block.id)}
-                        style={{
-                          position: 'absolute',
-                          top: `${((block.gridRowStart - 1) % 4) * 25}%`,
-                          height: `${block.gridRowSpan * 25}%`,
-                          left: `${block.column * columnWidth}%`,
-                          width: `${columnWidth}%`,
-                          padding: '0 2px'
-                        }}
-                        title={`${block.name} (${format(block.start, 'HH:mm')} - ${format(block.end, 'HH:mm')})`}
-                      >
-                        <div className="font-bold leading-tight">{block.name}</div>
-                        <div className="italic text-[0.65rem] leading-tight opacity-75">{block.authorName}</div>
-                      </div>
-                    );
-                  })}
-              </div>
-            );
-          })}
-        </React.Fragment>
-      ))}
+            {days.map(day => {
+              const blocks = getModuleBlocks(day);
+              const isOutside = isOutsideEventHours(day, hour);
+
+              return (
+                <div
+                  key={`${day.toISOString()}-${hour}`}
+                  className={`schedule-cell ${isOutside ? 'schedule-cell-outside' : ''}`}
+                  style={{
+                    display: 'grid',
+                    gridTemplateRows: 'repeat(4, 1fr)',
+                    position: 'relative'
+                  }}
+                >
+                  {blocks
+                    .filter(block => block.gridRowStart >= hour * 4 + 1 && 
+                                   block.gridRowStart < (hour + 1) * 4 + 1)
+                    .map(block => {
+                      const colorConfig = MODULE_COLORS.find(c => c.id === block.color) || MODULE_COLORS[0];
+                      const columnWidth = 100 / block.columnCount;
+                      return (
+                        <div
+                          key={block.id}
+                          className={`schedule-event ${colorConfig.bgClass} ${colorConfig.textClass} ${colorConfig.hoverClass} flex flex-col items-center justify-center`}
+                          onClick={() => onModuleClick?.(block.id)}
+                          style={{
+                            position: 'absolute',
+                            top: `${((block.gridRowStart - 1) % 4) * 25}%`,
+                            height: `${block.gridRowSpan * 25}%`,
+                            left: `${block.column * columnWidth}%`,
+                            width: `${columnWidth}%`,
+                            padding: '0 2px'
+                          }}
+                          title={`${block.name} (${format(block.start, 'HH:mm')} - ${format(block.end, 'HH:mm')})`}
+                        >
+                          <div className="font-bold leading-tight">{block.name}</div>
+                          <div className="italic text-[0.65rem] leading-tight opacity-75">{block.authorName}</div>
+                        </div>
+                      );
+                    })}
+                </div>
+              );
+            })}
+          </React.Fragment>
+        ))}
+      </div>
     </div>
   );
 }
