@@ -1,14 +1,12 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
-import { DisplayNamePrompt } from '../components/DisplayNamePrompt';
 
 type AuthContextType = {
   user: User | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
-  needsDisplayName: boolean;
   currentGameId: string | null;
   setCurrentGameId: (gameId: string | null) => void;
 };
@@ -18,7 +16,6 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [needsDisplayName, setNeedsDisplayName] = useState(false);
   const [currentGameId, setCurrentGameId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -36,31 +33,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Check if user needs to set display name when accessing a game
-  useEffect(() => {
-    if (!user || !currentGameId) {
-      setNeedsDisplayName(false);
-      return;
-    }
-
-    async function checkDisplayName() {
-      const { data: gameUsers, error } = await supabase
-        .from('game_users')
-        .select('id')
-        .eq('game_id', currentGameId)
-        .eq('user_id', user.id);
-
-      if (error) {
-        console.error('Error checking display name:', error);
-        return;
-      }
-
-      setNeedsDisplayName(gameUsers.length === 0);
-    }
-
-    checkDisplayName();
-  }, [user, currentGameId]);
-
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
@@ -77,17 +49,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       loading, 
       signIn, 
       signOut,
-      needsDisplayName,
       currentGameId,
       setCurrentGameId
     }}>
       {children}
-      {needsDisplayName && currentGameId && (
-        <DisplayNamePrompt 
-          gameId={currentGameId}
-          onComplete={() => setNeedsDisplayName(false)}
-        />
-      )}
     </AuthContext.Provider>
   );
 }
