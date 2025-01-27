@@ -8,6 +8,7 @@ import { ScheduleWidget } from '../components/ScheduleWidget';
 import { toLocalTime } from '../lib/dates';
 import { getUserDisplayNames } from '../lib/users';
 import { useAuth } from '../contexts/AuthContext';
+import { ModuleStatusBadge } from '../components/ModuleStatusBadge';
 
 export function ModulesPage() {
   const { gameId, eventId } = useParams();
@@ -19,8 +20,10 @@ export function ModulesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [canCreateModule, setCanCreateModule] = useState(false);
+  const [isGameAdmin, setIsGameAdmin] = useState(false);
   const [authorNames, setAuthorNames] = useState<Record<string, string>>({});
   const [showSchedule, setShowSchedule] = useState(false);
+  const [userModules, setUserModules] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (gameId) {
@@ -28,6 +31,19 @@ export function ModulesPage() {
     }
     return () => setCurrentGameId(null);
   }, [gameId, setCurrentGameId]);
+
+  useEffect(() => {
+    // Load user ID once and store module ownership info
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) {
+        const moduleOwnership = modules.reduce((acc, module) => ({
+          ...acc,
+          [module.id]: module.author_id === user.id
+        }), {});
+        setUserModules(moduleOwnership);
+      }
+    });
+  }, [modules]);
 
   useEffect(() => {
     async function loadModules() {
@@ -57,9 +73,14 @@ export function ModulesPage() {
         setGame(gameResult.data);
         setEvent(eventResult.data);
         setModules(modules);
+        
+        const isAdmin = appAdminResult.data?.length > 0 || 
+                       gameUserResult.data?.some(u => u.role === 'admin');
+        
+        setIsGameAdmin(isAdmin);
         setCanCreateModule(
-          appAdminResult.data?.length > 0 || 
-          gameUserResult.data?.some(u => ['admin', 'writer'].includes(u.role))
+          isAdmin || 
+          gameUserResult.data?.some(u => u.role === 'writer')
         );
 
         // Load author display names
@@ -168,12 +189,15 @@ export function ModulesPage() {
                 <th className="table-header-cell w-36">Author</th>
                 <th className="table-header-cell w-44">Start Time</th>
                 <th className="table-header-cell w-24 text-center">Duration</th>
+                <th className="table-header-cell w-32">Status</th>
                 <th className="table-header-cell">Summary</th>
               </tr>
             </thead>
             <tbody className="table-body">
               {modules.map(module => {
                 const moduleStart = toLocalTime(module.start_time);
+                const canSeeStatus = isGameAdmin || userModules[module.id];
+
                 return (
                   <tr
                     key={module.id}
@@ -192,6 +216,11 @@ export function ModulesPage() {
                     <td className="table-cell text-ink-light text-center border-r border-parchment-200">
                       {module.duration}h
                     </td>
+                    <td className="table-cell border-r border-parchment-200">
+                      {canSeeStatus && (
+                        <ModuleStatusBadge status={module.approval_status} />
+                      )}
+                    </td>
                     <td className="table-cell text-ink-light">
                       <div className="line-clamp-1">{module.summary}</div>
                     </td>
@@ -200,7 +229,7 @@ export function ModulesPage() {
               })}
               {modules.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="empty-state">
+                  <td colSpan={6} className="empty-state">
                     No modules scheduled
                   </td>
                 </tr>

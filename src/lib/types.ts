@@ -1,3 +1,5 @@
+import type { ModuleColor, ModuleApprovalStatus } from './types';
+
 export interface Game {
   id: string;
   name: string;
@@ -17,6 +19,8 @@ export interface Event {
 
 export type ModuleColor = 'blue' | 'green' | 'purple' | 'orange' | 'pink' | 'cyan';
 
+export type ModuleApprovalStatus = 'in_progress' | 'submitted' | 'approved' | 'returned';
+
 export interface Module {
   id: string;
   event_id: string;
@@ -27,6 +31,8 @@ export interface Module {
   duration: number;
   color: ModuleColor;
   properties: Record<string, any>;
+  approval_status: ModuleApprovalStatus;
+  approval_comment?: string;
 }
 
 export interface System {
