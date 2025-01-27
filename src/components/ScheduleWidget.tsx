@@ -26,6 +26,7 @@ interface ModuleBlock {
   gridRowSpan: number;
   column: number;
   columnCount: number;
+  approval_status: 'in_progress' | 'submitted' | 'approved' | 'returned';
 }
 
 export function ScheduleWidget({ 
@@ -155,6 +156,12 @@ export function ScheduleWidget({
           .print-color-orange { background: #FFFAF0; color: #9C4221; }
           .print-color-pink { background: #FFF5F7; color: #97266D; }
           .print-color-cyan { background: #E6FFFA; color: #234E52; }
+
+          /* Dotted border for submitted modules */
+          .schedule-event-submitted {
+            border: 2px dashed currentColor;
+            background: transparent !important;
+          }
         }
       </style>
       <link href="https://fonts.googleapis.com/css2?family=Crimson+Text:ital,wght@0,400;0,600;0,700;1,400;1,600;1,700&family=MedievalSharp&display=swap" rel="stylesheet">
@@ -197,6 +204,7 @@ export function ScheduleWidget({
 
   const getModuleBlocks = (day: Date): ModuleBlock[] => {
     const dayModules = modules
+      .filter(module => ['submitted', 'approved'].includes(module.approval_status))
       .map(module => {
         const moduleStart = toLocalTime(module.start_time);
         const moduleEnd = addHours(moduleStart, module.duration);
@@ -226,7 +234,8 @@ export function ScheduleWidget({
             gridRowStart,
             gridRowSpan: Math.max(1, Math.round(durationInQuarters)),
             column: 0,
-            columnCount: 1
+            columnCount: 1,
+            approval_status: module.approval_status
           };
         }
 
@@ -321,10 +330,18 @@ export function ScheduleWidget({
                     .map(block => {
                       const colorConfig = MODULE_COLORS.find(c => c.id === block.color) || MODULE_COLORS[0];
                       const columnWidth = 100 / block.columnCount;
+                      const isSubmitted = block.approval_status === 'submitted';
+
                       return (
                         <div
                           key={block.id}
-                          className={`schedule-event ${colorConfig.bgClass} ${colorConfig.textClass} ${colorConfig.hoverClass} flex flex-col items-center justify-center`}
+                          className={`
+                            schedule-event
+                            ${isSubmitted ? 'border-2 border-dashed bg-transparent' : colorConfig.bgClass}
+                            ${colorConfig.textClass}
+                            ${colorConfig.hoverClass}
+                            flex flex-col items-center justify-center
+                          `}
                           onClick={() => onModuleClick?.(block.id)}
                           style={{
                             position: 'absolute',

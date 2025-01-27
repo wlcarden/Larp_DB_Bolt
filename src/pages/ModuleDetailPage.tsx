@@ -2,11 +2,14 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import type { Module, Game, Event, ModuleProperty, ModuleColor } from '../lib/types';
-import { ChevronRight, Clock, User, CalendarDays, Printer } from 'lucide-react';
+import { ChevronRight, Clock, User, CalendarDays, Printer, Send, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toLocalTime, dateTimeLocalToUTC, utcToDateTimeLocal, formatDateTime } from '../lib/dates';
 import { MODULE_COLORS } from '../lib/colors';
 import { useAuth } from '../contexts/AuthContext';
+import { ModuleStatusBadge } from '../components/ModuleStatusBadge';
+import { ModuleApprovalModal } from '../components/ModuleApprovalModal';
+import { ModuleSubmitModal } from '../components/ModuleSubmitModal';
 
 export function ModuleDetailPage() {
   const { gameId, eventId, moduleId } = useParams();
@@ -18,8 +21,12 @@ export function ModuleDetailPage() {
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [canEdit, setCanEdit] = useState(false);
+  const [isGameAdmin, setIsGameAdmin] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [authorName, setAuthorName] = useState<string>('');
+  const [showApprovalModal, setShowApprovalModal] = useState(false);
+  const [showSubmitModal, setShowSubmitModal] = useState(false);
+  const [isCurrentUserAuthor, setIsCurrentUserAuthor] = useState(false);
   const [editForm, setEditForm] = useState<{
     name: string;
     start_time: string;
@@ -29,6 +36,136 @@ export function ModuleDetailPage() {
     properties: Record<string, any>;
   } | null>(null);
   const moduleRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (gameId) {
+      setCurrentGameId(gameId);
+    }
+    return () => setCurrentGameId(null);
+  }, [gameId, setCurrentGameId]);
+
+  useEffect(() => {
+    if (module) {
+      supabase.auth.getUser().then(({ data: { user } }) => {
+        if (user) {
+          setIsCurrentUserAuthor(module.author_id === user.id);
+        }
+      });
+    }
+  }, [module]);
+
+  const loadModule = async () => {
+    try {
+      const [moduleResult, gameResult, eventResult, appAdminResult, gameUserResult] = await Promise.all([
+        supabase.from('modules').select('*').eq('id', moduleId).single(),
+        supabase.from('games').select('*').eq('id', gameId).single(),
+        supabase.from('events').select('*').eq('id', eventId).single(),
+        supabase.from('app_admins').select('*').eq('user_id', (await supabase.auth.getUser()).data.user?.id),
+        supabase.from('game_users')
+          .select('*')
+          .eq('game_id', gameId)
+          .eq('user_id', (await supabase.auth.getUser()).data.user?.id)
+      ]);
+
+      if (moduleResult.error) throw moduleResult.error;
+      if (gameResult.error) throw gameResult.error;
+      if (eventResult.error) throw eventResult.error;
+
+      const module = moduleResult.data;
+      const game = gameResult.data;
+      const userRole = gameUserResult.data?.[0]?.role;
+      const isAdmin = appAdminResult.data?.length > 0 || userRole === 'admin';
+      
+      setModule(module);
+      setGame(game);
+      setEvent(eventResult.data);
+      setIsGameAdmin(isAdmin);
+      setCanEdit(
+        isAdmin ||
+        (userRole === 'writer' && 
+         module.author_id === (await supabase.auth.getUser()).data.user?.id &&
+         ['in_progress', 'returned'].includes(module.approval_status))
+      );
+
+      // Initialize edit form
+      setEditForm({
+        name: module.name,
+        start_time: utcToDateTimeLocal(module.start_time),
+        duration: module.duration,
+        summary: module.summary || '',
+        color: module.color || 'blue',
+        properties: Object.fromEntries(
+          Object.entries(module.properties).map(([key, value]) => {
+            const property = game.module_properties.find(p => p.name === key);
+            if (property?.variableType === 'dateTime') {
+              return [key, utcToDateTimeLocal(value as string)];
+            }
+            return [key, value];
+          })
+        )
+      });
+
+      // Get author display name
+      if (module.author_id) {
+        const { data: userData } = await supabase.rpc('get_user_metadata', {
+          user_ids: [module.author_id]
+        });
+        if (userData?.[0]) {
+          setAuthorName(userData[0].display_name);
+        }
+      }
+
+    } catch (error) {
+      console.error('Error loading module:', error);
+      setError('Failed to load module');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadModule();
+  }, [gameId, eventId, moduleId]);
+
+  const handleSaveModule = async () => {
+    if (!module || !editForm) return;
+
+    try {
+      setError(null);
+
+      // Convert local times to UTC for storage
+      const updatedModule = {
+        ...module,
+        name: editForm.name,
+        start_time: dateTimeLocalToUTC(editForm.start_time),
+        duration: editForm.duration,
+        summary: editForm.summary,
+        color: editForm.color,
+        properties: Object.fromEntries(
+          Object.entries(editForm.properties).map(([key, value]) => {
+            const property = game?.module_properties.find(p => p.name === key);
+            if (property?.variableType === 'dateTime') {
+              return [key, dateTimeLocalToUTC(value as string)];
+            }
+            return [key, value];
+          })
+        )
+      };
+
+      const { error: saveError } = await supabase
+        .from('modules')
+        .update(updatedModule)
+        .eq('id', module.id);
+      
+      if (saveError) throw saveError;
+      setIsEditing(false);
+
+      await loadModule();
+    } catch (error) {
+      console.error('Error updating module:', error);
+      setError('Failed to save module');
+    }
+  };
 
   const handlePrint = () => {
     const printWindow = window.open('', '_blank');
@@ -185,131 +322,6 @@ export function ModuleDetailPage() {
     };
   };
 
-  useEffect(() => {
-    if (gameId) {
-      setCurrentGameId(gameId);
-    }
-    return () => setCurrentGameId(null);
-  }, [gameId, setCurrentGameId]);
-
-  useEffect(() => {
-    async function loadModule() {
-      try {
-        const [moduleResult, gameResult, eventResult, appAdminResult, gameUserResult] = await Promise.all([
-          supabase.from('modules').select('*').eq('id', moduleId).single(),
-          supabase.from('games').select('*').eq('id', gameId).single(),
-          supabase.from('events').select('*').eq('id', eventId).single(),
-          supabase.from('app_admins').select('*').eq('user_id', (await supabase.auth.getUser()).data.user?.id),
-          supabase.from('game_users')
-            .select('*')
-            .eq('game_id', gameId)
-            .eq('user_id', (await supabase.auth.getUser()).data.user?.id)
-        ]);
-
-        if (moduleResult.error) throw moduleResult.error;
-        if (gameResult.error) throw gameResult.error;
-        if (eventResult.error) throw eventResult.error;
-
-        const module = moduleResult.data;
-        const game = gameResult.data;
-        const userRole = gameUserResult.data?.[0]?.role;
-        
-        setModule(module);
-        setGame(game);
-        setEvent(eventResult.data);
-        setCanEdit(
-          appAdminResult.data?.length > 0 ||
-          userRole === 'admin' || 
-          (userRole === 'writer' && module.author_id === (await supabase.auth.getUser()).data.user?.id)
-        );
-
-        // Initialize edit form
-        setEditForm({
-          name: module.name,
-          start_time: utcToDateTimeLocal(module.start_time),
-          duration: module.duration,
-          summary: module.summary || '',
-          color: module.color || 'blue',
-          properties: Object.fromEntries(
-            Object.entries(module.properties).map(([key, value]) => {
-              const property = game.module_properties.find(p => p.name === key);
-              if (property?.variableType === 'dateTime') {
-                return [key, utcToDateTimeLocal(value as string)];
-              }
-              return [key, value];
-            })
-          )
-        });
-
-        // Get author display name
-        if (module.author_id) {
-          const { data: userData } = await supabase.rpc('get_user_metadata', {
-            user_ids: [module.author_id]
-          });
-          if (userData?.[0]) {
-            setAuthorName(userData[0].display_name);
-          }
-        }
-
-      } catch (error) {
-        console.error('Error loading module:', error);
-        setError('Failed to load module');
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    loadModule();
-  }, [gameId, eventId, moduleId]);
-
-  const handleSaveModule = async () => {
-    if (!module || !editForm) return;
-
-    try {
-      setError(null);
-
-      // Convert local times to UTC for storage
-      const updatedModule = {
-        ...module,
-        name: editForm.name,
-        start_time: dateTimeLocalToUTC(editForm.start_time),
-        duration: editForm.duration,
-        summary: editForm.summary,
-        color: editForm.color,
-        properties: Object.fromEntries(
-          Object.entries(editForm.properties).map(([key, value]) => {
-            const property = game?.module_properties.find(p => p.name === key);
-            if (property?.variableType === 'dateTime') {
-              return [key, dateTimeLocalToUTC(value as string)];
-            }
-            return [key, value];
-          })
-        )
-      };
-
-      const { error: saveError } = await supabase
-        .from('modules')
-        .update(updatedModule)
-        .eq('id', module.id);
-      
-      if (saveError) throw saveError;
-      setIsEditing(false);
-
-      // Reload the module to get the updated data
-      const { data: updatedModuleData, error: reloadError } = await supabase
-        .from('modules')
-        .select('*')
-        .eq('id', module.id)
-        .single();
-
-      if (reloadError) throw reloadError;
-      setModule(updatedModuleData);
-    } catch (error) {
-      console.error('Error updating module:', error);
-      setError('Failed to save module');
-    }
-  };
-
   if (loading) {
     return (
       <div className="loading-spinner">
@@ -348,14 +360,35 @@ export function ModuleDetailPage() {
       <div className="card" ref={moduleRef}>
         <div className="card-header">
           <div className="relative">
-            <button
-              onClick={handlePrint}
-              className="absolute right-0 top-0 btn btn-secondary btn-with-icon"
-              title="Print module details"
-            >
-              <Printer className="h-4 w-4 mr-2" />
-              Print
-            </button>
+            <div className="absolute right-0 top-0 flex items-center space-x-4">
+              <button
+                onClick={handlePrint}
+                className="btn btn-secondary btn-with-icon"
+                title="Print module details"
+              >
+                <Printer className="h-4 w-4 mr-2" />
+                Print
+              </button>
+              {module.approval_status === 'submitted' && isGameAdmin && (
+                <button
+                  onClick={() => setShowApprovalModal(true)}
+                  className="btn btn-primary btn-with-icon"
+                >
+                  <CheckCircle2 className="h-4 w-4 mr-2" />
+                  Review Module
+                </button>
+              )}
+              {['in_progress', 'returned'].includes(module.approval_status) && 
+               isCurrentUserAuthor && (
+                <button
+                  onClick={() => setShowSubmitModal(true)}
+                  className="btn btn-primary btn-with-icon"
+                >
+                  <Send className="h-4 w-4 mr-2" />
+                  Submit for Approval
+                </button>
+              )}
+            </div>
             <div className="text-center space-y-4">
               {isEditing ? (
                 <input
@@ -367,10 +400,31 @@ export function ModuleDetailPage() {
               ) : (
                 <h1 className="text-4xl font-script text-ink">{module.name}</h1>
               )}
-              <div className="flex items-center justify-center text-ink-light space-x-2">
-                <User className="h-4 w-4" />
-                <span className="text-sm font-medieval italic">By {authorName}</span>
+              <div className="flex items-center justify-center space-x-4">
+                <div className="flex items-center text-ink-light space-x-2">
+                  <User className="h-4 w-4" />
+                  <span className="text-sm font-medieval italic">By {authorName}</span>
+                </div>
+                <ModuleStatusBadge status={module.approval_status} />
               </div>
+              {module.approval_status === 'approved' && module.approval_comment && (
+                <div className="flex items-start space-x-2 bg-green-50 text-green-800 p-4 rounded-md">
+                  <CheckCircle2 className="h-5 w-5 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medieval font-medium">Approved</p>
+                    <p className="mt-1 text-sm font-medieval">{module.approval_comment}</p>
+                  </div>
+                </div>
+              )}
+              {module.approval_status === 'returned' && module.approval_comment && (
+                <div className="flex items-start space-x-2 bg-red-50 text-red-800 p-4 rounded-md">
+                  <AlertCircle className="h-5 w-5 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medieval font-medium">Returned for Changes</p>
+                    <p className="mt-1 text-sm font-medieval">{module.approval_comment}</p>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -556,6 +610,22 @@ export function ModuleDetailPage() {
           )}
         </div>
       </div>
+
+      {showApprovalModal && (
+        <ModuleApprovalModal
+          module={module}
+          onClose={() => setShowApprovalModal(false)}
+          onUpdate={loadModule}
+        />
+      )}
+
+      {showSubmitModal && (
+        <ModuleSubmitModal
+          module={module}
+          onClose={() => setShowSubmitModal(false)}
+          onUpdate={loadModule}
+        />
+      )}
     </div>
   );
 }
