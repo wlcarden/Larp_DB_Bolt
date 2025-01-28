@@ -35,6 +35,11 @@ export function EventsPage() {
   useEffect(() => {
     async function loadEvents() {
       try {
+        if (!gameId) {
+          navigate('/games', { replace: true });
+          return;
+        }
+
         const [gameResult, eventsResult, appAdminResult, gameUserResult] = await Promise.all([
           supabase.from('games').select('*').eq('id', gameId).single(),
           supabase.from('events').select('*').eq('game_id', gameId).order('start_time'),
@@ -42,7 +47,11 @@ export function EventsPage() {
           supabase.from('game_users').select('*').eq('game_id', gameId).eq('user_id', (await supabase.auth.getUser()).data.user?.id).eq('role', 'admin')
         ]);
 
-        if (gameResult.error) throw gameResult.error;
+        if (gameResult.error) {
+          // If game not found, navigate back to games list
+          navigate('/games', { replace: true });
+          return;
+        }
         if (eventsResult.error) throw eventsResult.error;
         
         setGame(gameResult.data);
@@ -57,7 +66,7 @@ export function EventsPage() {
     }
 
     loadEvents();
-  }, [gameId]);
+  }, [gameId, navigate]);
 
   const handleSaveEvent = async (formData: FormData) => {
     try {

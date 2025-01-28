@@ -1,16 +1,12 @@
+@import './styles/common.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-@layer base {
-  body {
-    @apply font-medieval text-ink bg-parchment-50;
-  }
-}
-
 /* Common layout styles */
 .page-container {
-  @apply space-y-6 p-6;
+  @apply space-y-6 p-6 min-h-screen bg-parchment-texture bg-cover bg-fixed;
 }
 
 /* Breadcrumb styles */
@@ -194,12 +190,12 @@
 
 .schedule-time-column {
   @apply sticky left-0 z-10 bg-parchment-100 py-2 px-4 text-right text-sm font-medieval text-ink-light border-r border-l border-parchment-300 h-12 flex items-center justify-end;
-  border-bottom: 1px solid theme('colors.parchment.300');
+  border-bottom: 1px solid theme('colors.parchment.200');
 }
 
 .schedule-cell {
   @apply relative border-l border-parchment-300 h-12 bg-parchment-50;
-  border-bottom: 1px solid theme('colors.parchment.300');
+  border-bottom: 1px solid theme('colors.parchment.200');
 }
 
 .schedule-cell-outside {
@@ -208,6 +204,18 @@
 
 .schedule-event {
   @apply rounded-md px-3 py-1.5 text-xs font-medieval font-medium whitespace-nowrap overflow-hidden text-ellipsis cursor-pointer transition-colors duration-150 z-10 shadow-parchment;
+  touch-action: none;
+  user-select: none;
+}
+
+.schedule-event-submitted {
+  border-style: dashed !important;
+  border-color: currentColor !important;
+}
+
+.schedule-event-approved {
+  border-style: solid !important;
+  border-color: currentColor !important;
 }
 
 /* Table styles */

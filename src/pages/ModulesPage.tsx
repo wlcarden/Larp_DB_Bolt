@@ -22,7 +22,7 @@ export function ModulesPage() {
   const [canCreateModule, setCanCreateModule] = useState(false);
   const [isGameAdmin, setIsGameAdmin] = useState(false);
   const [authorNames, setAuthorNames] = useState<Record<string, string>>({});
-  const [showSchedule, setShowSchedule] = useState(false);
+  const [showSchedule, setShowSchedule] = useState(true);
   const [userModules, setUserModules] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -33,23 +33,9 @@ export function ModulesPage() {
   }, [gameId, setCurrentGameId]);
 
   useEffect(() => {
-    // Load user ID once and store module ownership info
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) {
-        const moduleOwnership = modules.reduce((acc, module) => ({
-          ...acc,
-          [module.id]: module.author_id === user.id
-        }), {});
-        setUserModules(moduleOwnership);
-      }
-    });
-  }, [modules]);
-
-  useEffect(() => {
     async function loadModules() {
       if (!gameId || !eventId) {
-        setError('Invalid game or event ID');
-        setLoading(false);
+        navigate('/games', { replace: true });
         return;
       }
 
@@ -65,23 +51,31 @@ export function ModulesPage() {
             .eq('user_id', (await supabase.auth.getUser()).data.user?.id)
         ]);
 
-        if (gameResult.error) throw new Error('Failed to load game details');
-        if (eventResult.error) throw new Error('Failed to load event details');
-        if (modulesResult.error) throw new Error('Failed to load modules');
+        if (gameResult.error || eventResult.error) {
+          navigate('/games', { replace: true });
+          return;
+        }
+        if (modulesResult.error) throw modulesResult.error;
         
         const modules = modulesResult.data || [];
+        const userRole = gameUserResult.data?.[0]?.role;
+        const isAdmin = appAdminResult.data?.length > 0 || userRole === 'admin';
+        
         setGame(gameResult.data);
         setEvent(eventResult.data);
         setModules(modules);
-        
-        const isAdmin = appAdminResult.data?.length > 0 || 
-                       gameUserResult.data?.some(u => u.role === 'admin');
-        
         setIsGameAdmin(isAdmin);
-        setCanCreateModule(
-          isAdmin || 
-          gameUserResult.data?.some(u => u.role === 'writer')
-        );
+        setCanCreateModule(isAdmin || userRole === 'writer');
+
+        // Get current user's ID
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          // Mark which modules belong to the current user
+          const userModuleMap = Object.fromEntries(
+            modules.map(m => [m.id, m.author_id === user.id])
+          );
+          setUserModules(userModuleMap);
+        }
 
         // Load author display names
         const authorIds = [...new Set(modules.map(m => m.author_id))].filter(Boolean);
@@ -89,14 +83,14 @@ export function ModulesPage() {
         setAuthorNames(displayNames);
       } catch (error) {
         console.error('Error loading modules:', error);
-        setError(error instanceof Error ? error.message : 'An unexpected error occurred');
+        setError('Failed to load modules');
       } finally {
         setLoading(false);
       }
     }
 
     loadModules();
-  }, [gameId, eventId]);
+  }, [gameId, eventId, navigate]);
 
   if (loading) {
     return (
@@ -160,6 +154,8 @@ export function ModulesPage() {
                   canCreateModule && navigate(`/games/${gameId}/events/${eventId}/modules/${moduleId}`)
                 }
                 bufferHours={2}
+                event={event}
+                isAdmin={isGameAdmin}
               />
             </div>
           </div>

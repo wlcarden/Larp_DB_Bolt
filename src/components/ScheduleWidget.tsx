@@ -1,11 +1,11 @@
 import React from 'react';
-import { format, addHours, eachDayOfInterval, isWithinInterval, isBefore, isAfter, startOfDay, endOfDay, areIntervalsOverlapping, differenceInMinutes } from 'date-fns';
+import { format, addHours, eachDayOfInterval, isWithinInterval, isBefore, isAfter, startOfDay, endOfDay, areIntervalsOverlapping, differenceInMinutes, parseISO } from 'date-fns';
 import type { Module, ModuleColor } from '../lib/types';
 import { MODULE_COLORS } from '../lib/colors';
-import { toLocalTime } from '../lib/dates';
+import { toLocalTime, dateTimeLocalToUTC, utcToDateTimeLocal } from '../lib/dates';
 import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { Printer } from 'lucide-react';
+import { Printer, Move } from 'lucide-react';
 
 type ScheduleWidgetProps = {
   startDate: Date;
@@ -13,6 +13,8 @@ type ScheduleWidgetProps = {
   modules?: Module[];
   onModuleClick?: (moduleId: string) => void;
   bufferHours?: number;
+  event?: { name: string } | null;
+  isAdmin?: boolean;
 };
 
 interface ModuleBlock {
@@ -29,14 +31,81 @@ interface ModuleBlock {
   approval_status: 'in_progress' | 'submitted' | 'approved' | 'returned';
 }
 
+interface ModuleProps {
+  block: ModuleBlock;
+  colorConfig: any;
+  columnWidth: number;
+  isEditMode: boolean;
+  onModuleClick?: (id: string) => void;
+  onEditClick: (id: string) => void;
+}
+
+function Module({ block, colorConfig, columnWidth, isEditMode, onModuleClick, onEditClick }: ModuleProps) {
+  const moduleRef = useRef<HTMLDivElement>(null);
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (isEditMode) {
+      onEditClick(block.id);
+    } else if (!isEditMode) {
+      onModuleClick?.(block.id);
+    }
+  };
+
+  const style: React.CSSProperties = {
+    position: 'absolute',
+    top: `${((block.gridRowStart - 1) % 4) * 25}%`,
+    height: `${block.gridRowSpan * 25}%`,
+    left: `${block.column * columnWidth}%`,
+    width: `${columnWidth}%`,
+    padding: '0 2px',
+    zIndex: 10,
+    border: `2px ${block.approval_status === 'submitted' ? 'dashed' : 'solid'} currentColor`,
+    boxSizing: 'border-box',
+    cursor: isEditMode ? 'pointer' : 'default',
+    userSelect: 'none',
+    touchAction: 'none',
+    opacity: ['in_progress', 'returned'].includes(block.approval_status) ? 0.5 : 1,
+  };
+
+  return (
+    <div
+      ref={moduleRef}
+      className={`
+        schedule-event
+        ${colorConfig.bgClass}
+        ${colorConfig.textClass}
+        ${colorConfig.hoverClass}
+        flex flex-col items-center justify-center
+        ${block.approval_status === 'submitted' ? 'schedule-event-submitted' : ''}
+        ${block.approval_status === 'approved' ? 'schedule-event-approved' : ''}
+      `}
+      style={style}
+      onClick={handleClick}
+      title={`${block.name} (${format(block.start, 'HH:mm')} - ${format(block.end, 'HH:mm')})`}
+    >
+      <div className="font-bold leading-tight">{block.name}</div>
+      <div className="italic text-[0.65rem] leading-tight opacity-75 schedule-event-author">{block.authorName}</div>
+      {isEditMode && (
+        <Move className="absolute top-0.5 right-0.5 h-3 w-3 opacity-50" />
+      )}
+    </div>
+  );
+}
+
 export function ScheduleWidget({ 
   startDate, 
   endDate, 
   modules = [], 
   onModuleClick,
-  bufferHours = 2 
+  bufferHours = 2,
+  event,
+  isAdmin = false
 }: ScheduleWidgetProps) {
   const [authorNames, setAuthorNames] = useState<Record<string, string>>({});
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editingModule, setEditingModule] = useState<{id: string, startTime: string} | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const scheduleRef = useRef<HTMLDivElement>(null);
   const days = eachDayOfInterval({ start: startDate, end: endDate });
   
@@ -67,127 +136,189 @@ export function ScheduleWidget({
     fetchAuthors();
   }, [modules]);
 
+  useEffect(() => {
+    if (!isEditMode) {
+      setEditingModule(null);
+    }
+  }, [isEditMode]);
+
+  const handleEditClick = (moduleId: string) => {
+    const module = modules.find(m => m.id === moduleId);
+    if (module) {
+      setEditingModule({
+        id: moduleId,
+        startTime: utcToDateTimeLocal(module.start_time)
+      });
+    }
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingModule) return;
+
+    try {
+      const newStartTime = parseISO(editingModule.startTime);
+      
+      // Validate the new time is within event bounds
+      if (newStartTime < startDate || newStartTime > endDate) {
+        setError('Module must be scheduled within event hours');
+        return;
+      }
+
+      const { error: updateError } = await supabase
+        .from('modules')
+        .update({
+          start_time: dateTimeLocalToUTC(editingModule.startTime)
+        })
+        .eq('id', editingModule.id);
+
+      if (updateError) throw updateError;
+
+      // Fetch updated modules list
+      const { data: updatedModules, error: fetchError } = await supabase
+        .from('modules')
+        .select('*')
+        .eq('event_id', modules[0]?.event_id);
+
+      if (fetchError) throw fetchError;
+      
+      // Update the modules prop through the parent component
+      if (onModuleClick) {
+        // Use onModuleClick as a trigger to refresh the parent
+        onModuleClick(editingModule.id);
+      }
+      
+      setEditingModule(null);
+      setError(null);
+    } catch (err) {
+      console.error('Error updating module time:', err);
+      setError('Failed to update module time');
+    }
+  };
+
   const handlePrint = () => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
 
-    // Get the schedule element's content
     const scheduleContent = scheduleRef.current;
     if (!scheduleContent) return;
 
-    // Create print-friendly styles
-    const printStyles = `
-      <style>
-        @media print {
-          @page {
-            size: landscape;
-            margin: 1cm;
-          }
-          
-          body { 
-            margin: 0;
-            padding: 20px;
-            font-family: 'Crimson Text', serif;
-            color: #2D3748;
-          }
+    // Create a title that includes the date range
+    const dateRangeTitle = `${event?.name ? `${event.name} - ` : ''}Schedule: ${format(startDate, 'MMM d, yyyy')} - ${format(endDate, 'MMM d, yyyy')}`;
 
-          h1 {
-            font-family: 'MedievalSharp', cursive;
-            text-align: center;
-            margin-bottom: 20px;
-            color: #2D3748;
-          }
-
-          .schedule-grid {
-            display: grid;
-            grid-template-columns: 5rem repeat(${days.length}, minmax(150px, 1fr));
-            min-width: 800px;
-            background: #FDF6E3;
-            border: 1px solid #F7E2C3;
-            page-break-inside: avoid;
-          }
-
-          .schedule-header-cell {
-            padding: 12px;
-            font-weight: bold;
-            text-align: center;
-            border: 1px solid #F7E2C3;
-            background: #FAECD3;
-          }
-
-          .schedule-time-column {
-            padding: 8px;
-            text-align: right;
-            border: 1px solid #F7E2C3;
-            height: 48px;
-            display: flex;
-            align-items: center;
-            justify-content: flex-end;
-            background: #FDF6E3;
-          }
-
-          .schedule-cell {
-            position: relative;
-            border: 1px solid #F7E2C3;
-            height: 48px;
-            background: #FFFBF2;
-          }
-
-          .schedule-cell-outside {
-            background: #FAECD3;
-            opacity: 0.75;
-          }
-
-          .schedule-event {
-            position: absolute;
-            border-radius: 4px;
-            padding: 4px 8px;
-            font-size: 12px;
-            overflow: hidden;
-            white-space: nowrap;
-            text-overflow: ellipsis;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-          }
-
-          /* Color classes for print */
-          .print-color-blue { background: #EBF8FF; color: #2C5282; }
-          .print-color-green { background: #F0FFF4; color: #276749; }
-          .print-color-purple { background: #FAF5FF; color: #553C9A; }
-          .print-color-orange { background: #FFFAF0; color: #9C4221; }
-          .print-color-pink { background: #FFF5F7; color: #97266D; }
-          .print-color-cyan { background: #E6FFFA; color: #234E52; }
-
-          /* Dotted border for submitted modules */
-          .schedule-event-submitted {
-            border: 2px dashed currentColor;
-            background: transparent !important;
-          }
-        }
-      </style>
-      <link href="https://fonts.googleapis.com/css2?family=Crimson+Text:ital,wght@0,400;0,600;0,700;1,400;1,600;1,700&family=MedievalSharp&display=swap" rel="stylesheet">
-    `;
-
-    // Create the print document
     printWindow.document.write(`
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Schedule - ${format(startDate, 'PPP')} to ${format(endDate, 'PPP')}</title>
-          ${printStyles}
+          <title>${dateRangeTitle}</title>
+          <link href="https://fonts.googleapis.com/css2?family=Crimson+Text:ital,wght@0,400;0,600;0,700;1,400;1,600;1,700&family=MedievalSharp&display=swap" rel="stylesheet">
+          <style>
+            @page {
+              size: landscape;
+              margin: 1cm;
+            }
+            
+            body {
+              margin: 0;
+              padding: 20px;
+              font-family: 'Crimson Text', serif;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
+
+            .schedule-print-title {
+              font-family: 'MedievalSharp', cursive;
+              text-align: center;
+              color: #2D3748;
+              margin-bottom: 20px;
+              font-size: 24px;
+            }
+
+            .schedule-grid {
+              display: grid;
+              grid-template-columns: 5rem repeat(${days.length}, minmax(150px, 1fr));
+              width: 100%;
+              background: #FDF6E3;
+              border: 1px solid #F7E2C3;
+              line-height: 1;
+            }
+
+            .schedule-header-cell {
+              padding: 4px;
+              font-weight: bold;
+              text-align: center;
+              border: 1px solid #F7E2C3;
+              background: #FAECD3;
+              font-size: 12px;
+            }
+
+            .schedule-time-column {
+              padding: 2px 4px;
+              text-align: right;
+              border: 1px solid #F7E2C3;
+              height: 16px;
+              display: flex;
+              align-items: center;
+              justify-content: flex-end;
+              background: #FDF6E3;
+              font-size: 10px;
+            }
+
+            .schedule-cell {
+              position: relative;
+              border: 1px solid #F7E2C3;
+              height: 16px;
+              background: #FFFBF2;
+              padding: 0;
+            }
+
+            .schedule-cell-outside {
+              background: #FAECD3;
+              opacity: 0.75;
+            }
+
+            .schedule-event {
+              position: absolute;
+              border-radius: 2px;
+              padding: 1px 4px;
+              font-size: 9px;
+              overflow: hidden;
+              white-space: nowrap;
+              text-overflow: ellipsis;
+              box-shadow: none;
+              box-sizing: border-box;
+              line-height: 1.2;
+            }
+
+            .schedule-event-author {
+              font-size: 7px;
+              opacity: 0.75;
+              display: block;
+              white-space: nowrap;
+              overflow: hidden;
+              text-overflow: ellipsis;
+            }
+
+            /* Color classes */
+            .bg-blue-100 { background: #EBF8FF; color: #2C5282; border: 1px solid #4299E1; }
+            .bg-green-100 { background: #F0FFF4; color: #276749; border: 1px solid #48BB78; }
+            .bg-purple-100 { background: #FAF5FF; color: #553C9A; border: 1px solid #9F7AEA; }
+            .bg-orange-100 { background: #FFFAF0; color: #9C4221; border: 1px solid #ED8936; }
+            .bg-pink-100 { background: #FFF5F7; color: #97266D; border: 1px solid #ED64A6; }
+            .bg-cyan-100 { background: #E6FFFA; color: #234E52; border: 1px solid #38B2AC; }
+
+            .schedule-event-submitted { border-style: dashed !important; }
+            .schedule-event-approved { border-style: solid !important; }
+          </style>
         </head>
         <body>
-          <h1>Schedule: ${format(startDate, 'PPP')} to ${format(endDate, 'PPP')}</h1>
-          ${scheduleContent.outerHTML.replace(/bg-\w+-\d+/g, '').replace(
-            /(blue|green|purple|orange|pink|cyan)-\d+/g, 
-            (match) => `print-color-${match.split('-')[0]}`
-          )}
+          <h1 class="schedule-print-title">${dateRangeTitle}</h1>
+          ${scheduleContent.outerHTML}
         </body>
       </html>
     `);
 
     printWindow.document.close();
 
-    // Wait for fonts to load before printing
     printWindow.onload = () => {
       setTimeout(() => {
         printWindow.print();
@@ -196,15 +327,8 @@ export function ScheduleWidget({
     };
   };
 
-  // Add buffer hours before and after
-  const displayStart = new Date(startDate);
-  displayStart.setHours(displayStart.getHours() - bufferHours);
-  const displayEnd = new Date(endDate);
-  displayEnd.setHours(displayEnd.getHours() + bufferHours);
-
   const getModuleBlocks = (day: Date): ModuleBlock[] => {
     const dayModules = modules
-      .filter(module => ['submitted', 'approved'].includes(module.approval_status))
       .map(module => {
         const moduleStart = toLocalTime(module.start_time);
         const moduleEnd = addHours(moduleStart, module.duration);
@@ -288,15 +412,49 @@ export function ScheduleWidget({
 
   return (
     <div className="relative">
-      <button
-        onClick={handlePrint}
-        className="absolute -top-12 right-0 btn btn-secondary btn-with-icon"
-        title="Print schedule"
+      <div className="absolute -top-12 right-0 flex items-center space-x-4">
+        {isAdmin && (
+          <button
+            onClick={() => setIsEditMode(!isEditMode)}
+            className={`btn ${isEditMode ? 'btn-primary' : 'btn-secondary'} btn-with-icon`}
+            title={isEditMode ? 'Exit edit mode' : 'Enter edit mode'}
+          >
+            <Move className="h-4 w-4 mr-2" />
+            {isEditMode ? 'Exit Edit Mode' : 'Edit Schedule'}
+          </button>
+        )}
+        <button
+          onClick={handlePrint}
+          className="btn btn-secondary btn-with-icon"
+          title="Print schedule"
+        >
+          <Printer className="h-4 w-4 mr-2" />
+          Print
+        </button>
+      </div>
+
+      {error && (
+        <div className="mb-4 rounded-md bg-red-100 border border-red-400 p-4">
+          <div className="text-sm font-medieval text-red-800">{error}</div>
+        </div>
+      )}
+
+      {isEditMode && (
+        <div className="mb-4 bg-parchment-100 rounded-md p-4 border border-parchment-300">
+          <p className="text-sm font-medieval text-ink-light">
+            Click on a module to edit its scheduled time.
+          </p>
+        </div>
+      )}
+
+      <div 
+        ref={scheduleRef} 
+        className="schedule-grid" 
+        style={{ 
+          '--day-count': days.length,
+          userSelect: isEditMode ? 'none' : 'text',
+        } as React.CSSProperties}
       >
-        <Printer className="h-4 w-4 mr-2" />
-        Print
-      </button>
-      <div ref={scheduleRef} className="schedule-grid" style={{ '--day-count': days.length } as React.CSSProperties}>
         <div className="schedule-header-cell" />
         {days.map(day => (
           <div key={day.toISOString()} className="schedule-header-cell">
@@ -313,11 +471,13 @@ export function ScheduleWidget({
             {days.map(day => {
               const blocks = getModuleBlocks(day);
               const isOutside = isOutsideEventHours(day, hour);
+              const cellId = `${day.toISOString()}-${hour}`;
 
               return (
                 <div
-                  key={`${day.toISOString()}-${hour}`}
-                  className={`schedule-cell ${isOutside ? 'schedule-cell-outside' : ''}`}
+                  key={cellId}
+                  data-cell-id={cellId}
+                  className={`schedule-cell ${isOutside ? 'schedule-cell-outside' : ''} ${isEditMode ? 'cursor-copy' : ''}`}
                   style={{
                     display: 'grid',
                     gridTemplateRows: 'repeat(4, 1fr)',
@@ -330,32 +490,17 @@ export function ScheduleWidget({
                     .map(block => {
                       const colorConfig = MODULE_COLORS.find(c => c.id === block.color) || MODULE_COLORS[0];
                       const columnWidth = 100 / block.columnCount;
-                      const isSubmitted = block.approval_status === 'submitted';
 
                       return (
-                        <div
+                        <Module
                           key={block.id}
-                          className={`
-                            schedule-event
-                            ${isSubmitted ? 'border-2 border-dashed bg-transparent' : colorConfig.bgClass}
-                            ${colorConfig.textClass}
-                            ${colorConfig.hoverClass}
-                            flex flex-col items-center justify-center
-                          `}
-                          onClick={() => onModuleClick?.(block.id)}
-                          style={{
-                            position: 'absolute',
-                            top: `${((block.gridRowStart - 1) % 4) * 25}%`,
-                            height: `${block.gridRowSpan * 25}%`,
-                            left: `${block.column * columnWidth}%`,
-                            width: `${columnWidth}%`,
-                            padding: '0 2px'
-                          }}
-                          title={`${block.name} (${format(block.start, 'HH:mm')} - ${format(block.end, 'HH:mm')})`}
-                        >
-                          <div className="font-bold leading-tight">{block.name}</div>
-                          <div className="italic text-[0.65rem] leading-tight opacity-75">{block.authorName}</div>
-                        </div>
+                          block={block}
+                          colorConfig={colorConfig}
+                          columnWidth={columnWidth}
+                          isEditMode={isEditMode}
+                          onModuleClick={onModuleClick}
+                          onEditClick={handleEditClick}
+                        />
                       );
                     })}
                 </div>
@@ -364,6 +509,46 @@ export function ScheduleWidget({
           </React.Fragment>
         ))}
       </div>
+
+      {/* Edit Time Modal */}
+      {editingModule && (
+        <div className="modal-overlay">
+          <div className="modal-content max-w-md">
+            <h2 className="modal-title">Edit Module Time</h2>
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="start_time" className="form-label">Start Time</label>
+                <input
+                  type="datetime-local"
+                  id="start_time"
+                  value={editingModule.startTime}
+                  onChange={(e) => setEditingModule({ ...editingModule, startTime: e.target.value })}
+                  className="form-input"
+                  min={startDate.toISOString().slice(0, 16)}
+                  max={endDate.toISOString().slice(0, 16)}
+                />
+              </div>
+
+              <div className="flex justify-end space-x-3">
+                <button
+                  type="button"
+                  onClick={() => setEditingModule(null)}
+                  className="btn btn-secondary"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveEdit}
+                  className="btn btn-primary"
+                >
+                  Apply Change
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
