@@ -2,8 +2,6 @@
 
 LARP Nexus is a comprehensive web application designed to help LARP (Live Action Role-Playing) organizers manage their games, events, and modules efficiently. Built with modern web technologies, it provides a robust platform for scheduling and organizing LARP events.
 
-![LARP Nexus](https://images.unsplash.com/photo-1615800098746-73af8261e3df?auto=format&fit=crop&q=80&w=2000)
-
 ## Features
 
 - **Game Management**
