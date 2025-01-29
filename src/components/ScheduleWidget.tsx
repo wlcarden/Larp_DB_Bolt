@@ -6,6 +6,7 @@ import { toLocalTime, dateTimeLocalToUTC, utcToDateTimeLocal } from '../lib/date
 import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { Printer, Move } from 'lucide-react';
+import '../styles/print.css';
 
 type ScheduleWidgetProps = {
   startDate: Date;

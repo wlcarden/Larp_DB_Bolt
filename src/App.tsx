@@ -10,39 +10,14 @@ import { CreateModulePage } from './pages/CreateModulePage';
 import { SystemsPage } from './pages/SystemsPage';
 import { useEffect } from 'react';
 
-// Error boundary component for handling route errors
-function RouteErrorBoundary() {
+// Catch-all component that redirects to home
+function NotFound() {
   const navigate = useNavigate();
-  const location = useLocation();
-
+  
   useEffect(() => {
-    // Get the current path segments
-    const segments = location.pathname.split('/').filter(Boolean);
-    
-    // Try to navigate up one level at a time until we find a valid route
-    const tryNavigate = async (path: string) => {
-      try {
-        // Try to navigate to the path
-        navigate(path, { replace: true });
-      } catch {
-        // If navigation fails and we're not at root, try going up one level
-        if (path !== '/') {
-          const parentPath = path.split('/').slice(0, -1).join('/') || '/';
-          await tryNavigate(parentPath);
-        }
-      }
-    };
-
-    // Start with current path minus last segment
-    if (segments.length > 0) {
-      const initialPath = '/' + segments.slice(0, -1).join('/');
-      tryNavigate(initialPath);
-    } else {
-      // If we're already at root level, just go to root
-      navigate('/', { replace: true });
-    }
-  }, [location, navigate]);
-
+    navigate('/', { replace: true });
+  }, [navigate]);
+  
   return null;
 }
 
@@ -73,8 +48,8 @@ function App() {
           <Route path="games/:gameId/events/:eventId/modules/new" element={<CreateModulePage />} />
           <Route path="games/:gameId/events/:eventId/modules/:moduleId" element={<ModuleDetailPage />} />
           
-          {/* Error boundary route that catches all unmatched paths */}
-          <Route path="*" element={<RouteErrorBoundary />} />
+          {/* Catch-all route that redirects to home */}
+          <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>
     </BrowserRouter>
